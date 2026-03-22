@@ -23,6 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Claude AI - personal/local files
-CLAUDE.local.md
-.claude/settings.local.json
+# AI - personal/local files
+AI.local.md
+.ai/settings.local.json
