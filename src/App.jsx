@@ -22,11 +22,11 @@ function App() {
 
   const [displaySpeed, setDisplaySpeed] = useState(0);
   const [maxDialSpeed, setMaxDialSpeed] = useState(100);
-  
+
   // Real-time chart data
   const [dlData, setDlData] = useState([]);
   const [ulData, setUlData] = useState([]);
-  
+
   // History Modal
   const [showHistory, setShowHistory] = useState(false);
   const [testHistory, setTestHistory] = useState([]);
@@ -82,7 +82,7 @@ function App() {
       onUploadComplete: (speed, loadedPing) => {
         setMetrics(prevMetrics => {
           const finalMetrics = { ...prevMetrics, upload: speed, loadedPing: loadedPing || prevMetrics.loadedPing };
-          
+
           setTestHistory(prevHistory => {
             const newHistory = [{
               date: new Date().toISOString(),
@@ -91,11 +91,11 @@ function App() {
               ping: finalMetrics.ping,
               provider: networkInfo.provider
             }, ...prevHistory].slice(0, 50);
-            
+
             localStorage.setItem('speedTestHistory', JSON.stringify(newHistory));
             return newHistory;
           });
-          
+
           return finalMetrics;
         });
         setDisplaySpeed(speed);
@@ -110,7 +110,7 @@ function App() {
   const getDialColor = () => {
     if (status === 'downloading') return 'url(#gradient-dl)';
     if (status === 'uploading') return 'url(#gradient-ul)';
-    if (status === 'finished') return 'url(#gradient-dl)'; 
+    if (status === 'finished') return 'url(#gradient-dl)';
     return 'rgba(255,255,255,0.1)';
   };
 
@@ -129,12 +129,15 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <motion.h1 
+        <motion.h1
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Zap size={40} className="text-accent" /> Velocity
+          <span style={{ WebkitTextFillColor: 'initial', display: 'flex' }}>
+            <Zap size={38} className="text-accent" />
+          </span>
+          Velocity
         </motion.h1>
         <motion.p
           initial={{ opacity: 0 }}
@@ -147,13 +150,13 @@ function App() {
 
       <main className="dashboard">
         {/* Left Column: Speedometer */}
-        <motion.div 
+        <motion.div
           className="speed-column"
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, type: 'spring' }}
         >
-          <div className="speedometer-container">
+          <div className={`speedometer-container${status !== 'idle' && status !== 'finished' ? ' is-running' : ''}`}>
             <div className="circle-progress">
               <svg viewBox="0 0 240 240">
                 <defs>
@@ -181,7 +184,7 @@ function App() {
               </svg>
 
               <div className="speed-value-display">
-                <motion.div 
+                <motion.div
                   className="value"
                   // Key forces re-animation jump when switching statuses
                   key={status}
@@ -189,28 +192,28 @@ function App() {
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.3 }}
                 >
-                  {status === 'pinging' ? metrics.ping : ( 
-                    status === 'finished' ? metrics.download.toFixed(1) : 
-                    (displaySpeed > 0 ? displaySpeed.toFixed(1) : '0.0')
+                  {status === 'pinging' ? metrics.ping : (
+                    status === 'finished' ? metrics.download.toFixed(1) :
+                      (displaySpeed > 0 ? displaySpeed.toFixed(1) : '0.0')
                   )}
                 </motion.div>
                 <div className="unit">{status === 'finished' ? 'Mbps' : currentUnit}</div>
                 <div className="label">{getStatusLabel()}</div>
               </div>
             </div>
-            
+
             {/* Real-time Chart nested inside the container for a clean look */}
             <AnimatePresence>
               {(status === 'downloading' || status === 'uploading' || status === 'finished') && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   className="chart-wrapper"
                 >
-                  <SpeedChart 
-                    data={status === 'uploading' ? ulData : dlData} 
-                    type={status === 'uploading' ? 'upload' : 'download'} 
+                  <SpeedChart
+                    data={status === 'uploading' ? ulData : dlData}
+                    type={status === 'uploading' ? 'upload' : 'download'}
                   />
                 </motion.div>
               )}
@@ -229,7 +232,7 @@ function App() {
         </motion.div>
 
         {/* Right Column: Stats & Info */}
-        <motion.div 
+        <motion.div
           className="stats-grid"
           initial="hidden"
           animate="visible"
@@ -243,7 +246,7 @@ function App() {
           <StatCard icon={<Activity className="stat-icon ping" />} title="Ping" value={metrics.ping} unit="ms" />
           <StatCard icon={<Activity className="stat-icon jitter" />} title="Bufferbloat" value={metrics.loadedPing || '--'} unit="ms" />
 
-          <motion.div 
+          <motion.div
             className="network-info"
             variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
           >
@@ -253,7 +256,7 @@ function App() {
             <InfoItem label="IP ADDRESS" icon={<Activity size={16} />} value={networkInfo.ip} />
           </motion.div>
 
-          <motion.div 
+          <motion.div
             className="history-controls"
             variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
             style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', marginTop: '1rem' }}
@@ -265,18 +268,18 @@ function App() {
 
         </motion.div>
       </main>
-      
+
       {/* History Modal Overlay */}
       <AnimatePresence>
         {showHistory && (
-          <motion.div 
+          <motion.div
             className="history-modal-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setShowHistory(false)}
           >
-            <motion.div 
+            <motion.div
               className="history-modal-content"
               initial={{ scale: 0.9, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
@@ -294,9 +297,9 @@ function App() {
                   testHistory.map((test, i) => (
                     <div key={i} className="history-row">
                       <div className="h-date">{new Date(test.date).toLocaleString()}</div>
-                      <div className="h-stat down"><ArrowDownCircle size={14}/> {test.download.toFixed(1)}</div>
-                      <div className="h-stat up"><ArrowUpCircle size={14}/> {test.upload.toFixed(1)}</div>
-                      <div className="h-stat"><Activity size={14}/> {test.ping}ms</div>
+                      <div className="h-stat down"><ArrowDownCircle size={14} /> {test.download.toFixed(1)}</div>
+                      <div className="h-stat up"><ArrowUpCircle size={14} /> {test.upload.toFixed(1)}</div>
+                      <div className="h-stat"><Activity size={14} /> {test.ping}ms</div>
                     </div>
                   ))
                 )}
@@ -311,14 +314,14 @@ function App() {
 
 function StatCard({ icon, title, value, unit, glow }) {
   return (
-    <motion.div 
+    <motion.div
       className="stat-card"
       variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
       whileHover={{ scale: 1.02 }}
     >
       <div className="stat-header">{icon} {title}</div>
       <div className={`stat-value ${glow ? `text-glow-${glow}` : ''}`}>
-        {value > 0 ? (typeof value === 'number' ? value.toFixed(1).replace(/\.0$/, '') : value) : '--'}
+        {(typeof value === 'number' && value > 0) ? value.toFixed(1).replace(/\.0$/, '') : (typeof value === 'string' ? value : '--')}
         <span className="stat-unit">{unit}</span>
       </div>
     </motion.div>

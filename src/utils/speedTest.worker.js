@@ -25,7 +25,7 @@ const measurePing = async () => {
 const startBufferbloatMeasurement = () => {
   isMeasuringBufferbloat = true;
   bufferbloatPings = [];
-  
+
   const pingLoop = async () => {
     if (!isMeasuringBufferbloat) return;
     try {
@@ -55,11 +55,11 @@ const measureDownloadSpeed = async (onProgress) => {
   const MAX_D = 15000;
   const CONNS = 4; // Multiple connections for gigabit saturation
   const start = performance.now();
-  
+
   let totalLoaded = 0;
   let isDone = false;
   let lastTime = start;
-  
+
   startBufferbloatMeasurement();
 
   try {
@@ -89,27 +89,27 @@ const measureDownloadSpeed = async (onProgress) => {
 
     const timeoutPromise = new Promise(r => setTimeout(r, MAX_D));
     await Promise.race([Promise.all(tasks), timeoutPromise]);
-    
+
     isDone = true;
     const now = performance.now();
     const secs = Math.max((now - start) / 1000, 0.001);
     const final = ((totalLoaded * 8) / secs) / 1000000;
-    
+
     const loadedPing = stopBufferbloatMeasurement();
 
     return { speed: final, loadedPing };
-  } catch { 
+  } catch {
     stopBufferbloatMeasurement();
-    return { speed: 0, loadedPing: 0 }; 
+    return { speed: 0, loadedPing: 0 };
   }
 };
 
 const measureUploadSpeed = async (onProgress) => {
   const MAX_D = 15000;
-  const CONNS = 4; 
+  const CONNS = 4;
   const LOAD = 10 * 1024 * 1024; // 10MB per conn
   const buffer = new Uint8Array(LOAD).fill(1).buffer;
-  
+
   const start = performance.now();
   let totalLoaded = 0;
   let isDone = false;
@@ -126,10 +126,10 @@ const measureUploadSpeed = async (onProgress) => {
         if (isDone || controller.signal.aborted) return;
 
         // Estimate based on time to reach max payload
-        const chunk = LOAD / (MAX_D / 100); 
+        const chunk = LOAD / (MAX_D / 100);
         bytesUploaded += chunk;
         if (bytesUploaded > LOAD) bytesUploaded = LOAD;
-        
+
         // This is a rough estimation since fetch lacks native upload tracking
         // For a true accurate client we'd use XMLHttpRequest for upload tracking,
         // but XHR is tricky in strict Web Workers. We'll use simulated smoothing.
@@ -148,7 +148,7 @@ const measureUploadSpeed = async (onProgress) => {
       };
 
       simulateProgress();
-      
+
       const timeoutId = setTimeout(() => {
         controller.abort();
       }, MAX_D);
@@ -169,18 +169,18 @@ const measureUploadSpeed = async (onProgress) => {
 
     const timeoutPromise = new Promise(r => setTimeout(r, MAX_D));
     await Promise.race([Promise.all(tasks), timeoutPromise]);
-    
+
     isDone = true;
     const now = performance.now();
     const secs = Math.max((now - start) / 1000, 0.001);
     const final = ((totalLoaded * 8) / secs) / 1000000;
-    
+
     const loadedPing = stopBufferbloatMeasurement();
 
     return { speed: final, loadedPing };
-  } catch { 
+  } catch {
     stopBufferbloatMeasurement();
-    return { speed: 0, loadedPing: 0 }; 
+    return { speed: 0, loadedPing: 0 };
   }
 };
 
