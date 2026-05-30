@@ -2,13 +2,62 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- SEO -->
+    <title>Velocity — Network Speed Test</title>
+    <meta name="description" content="Accurate, real-time internet speed test. Measure download, upload, ping, and bufferbloat with Velocity." />
+    <meta name="robots" content="index, follow" />
+
+    <!-- PWA / Theme -->
+    <meta name="theme-color" content="#0c0c0e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>Velocity</title>
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+    <!--
+      Content-Security-Policy
+      ─────────────────────────────────────────────────────────────────────────
+      default-src 'self'            — block everything not listed below
+      script-src  'self'            — only our own JS bundles
+      style-src   'self' 'unsafe-inline' fonts.googleapis.com
+                                    — inline styles needed by framer-motion;
+                                      Google Fonts stylesheet
+      font-src    fonts.gstatic.com — Google Fonts files
+      connect-src 'self'
+                  https://cloudflare.com
+                  https://speed.cloudflare.com
+                  https://ipinfo.io
+                  https://api.ipify.org
+                                    — only the endpoints our worker talks to
+      img-src     'self' data:      — favicons + any data URIs
+      worker-src  'self' blob:      — Vite inlines workers as blob: URLs
+      frame-ancestors 'none'        — no iframe embedding
+      base-uri    'self'            — lock <base> tag to same origin
+      form-action 'none'            — no form submissions
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src https://fonts.gstatic.com;
+      connect-src 'self'
+        https://cloudflare.com
+        https://speed.cloudflare.com
+        https://ipinfo.io
+        https://api.ipify.org;
+      img-src 'self' data:;
+      worker-src 'self' blob:;
+      frame-ancestors 'none';
+      base-uri 'self';
+      form-action 'none';
+    " />
+
+    <!-- Open Graph -->
+    <meta property="og:title"       content="Velocity — Network Speed Test" />
+    <meta property="og:description" content="Accurate, real-time internet speed test." />
+    <meta property="og:type"        content="website" />
   </head>
   <body>
     <div id="root"></div>

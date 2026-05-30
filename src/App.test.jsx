@@ -18,8 +18,16 @@ vi.mock('recharts', async () => {
 
 vi.mock('./utils/speedTest', () => ({
     startSpeedTest: vi.fn(),
-    stopSpeedTest: vi.fn(),
-    getNetworkInfo: vi.fn()
+    stopSpeedTest: vi.fn()
+}));
+
+vi.mock('./hooks/useNetworkInfo', () => ({
+  default: () => ({
+    provider: 'Mock Provider',
+    type: 'Mock Connection',
+    downlink: '10 Mbps',
+    ip: '127.0.0.1'
+  })
 }));
 
 const localStorageMock = {
@@ -33,14 +41,6 @@ describe('Velocity App Component', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         localStorageMock.getItem.mockReturnValue(JSON.stringify([]));
-
-        speedTestUtils.getNetworkInfo.mockResolvedValue({
-            provider: 'Mock Provider',
-            type: 'Mock Connection',
-            downlink: '10 Mbps',
-            rtt: '50 ms',
-            ip: '127.0.0.1'
-        });
     });
 
     it('renders correctly on mount and dynamically grabs network details', async () => {

@@ -1,77 +1,90 @@
-// src/utils/speedTest.js
+/**
+ * @file speedTest.js
+ * Main-thread interface to the speed test Web Worker.
+ *
+ * Manages a single worker instance — calling startSpeedTest while one is
+ * already running will terminate the old one first (safe reset).
+ *
+ * Security:
+ *  - Validates every inbound worker message against MSG allow-list.
+ *  - Callbacks are invoked only for known message types.
+ *  - No data from the worker is reflected into the DOM directly;
+ *    callers are responsible for sanitisation before display.
+ */
 
-export const getNetworkInfo = async () => {
-  let info = { provider: 'Local/Private Network', type: 'Unknown', downlink: 'N/A', rtt: 'N/A', ip: 'Hidden by Browser' };
+import { MSG } from '../constants.js';
 
-  try {
-    const res = await fetch('https://ipinfo.io/json', { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    info.ip = data.ip || info.ip;
-    info.provider = (data.org || data.asn || 'ISP Identified').replace(/^AS\d+\s/, '');
-  } catch {
-    try {
-      const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3000) });
-      info.ip = (await res.json()).ip || 'Hidden';
-      info.provider = 'General Network';
-    } catch { }
-  }
+/** @type {Worker | null} */
+let activeWorker = null;
 
-  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (c) {
-    info.type = c.effectiveType || c.type || 'Unknown';
-    info.downlink = c.downlink ? `${c.downlink} Mbps est.` : 'N/A';
-    info.rtt = c.rtt ? `${c.rtt} ms est.` : 'N/A';
-  }
-  return info;
-};
+/**
+ * @typedef {Object} SpeedTestCallbacks
+ * @property {(status: string)  => void} onStatus
+ * @property {(ping: number, jitter: number) => void} onPing
+ * @property {(speed: number)   => void} onDownloadProgress
+ * @property {(speed: number, loadedPing: number) => void} onDownloadComplete
+ * @property {(speed: number)   => void} onUploadProgress
+ * @property {(speed: number, loadedPing: number) => void} onUploadComplete
+ * @property {(err: ErrorEvent) => void} onError
+ */
 
-// Singleton worker manager
-let worker = null;
-
+/**
+ * Start a new speed test. Terminates any existing run first.
+ * @param {SpeedTestCallbacks} callbacks
+ */
 export const startSpeedTest = (callbacks) => {
-  if (worker) {
-    worker.terminate();
-  }
-  
-  // Create worker
-  worker = new Worker(new URL('./speedTest.worker.js', import.meta.url), { type: 'module' });
-  
-  worker.onmessage = (e) => {
-    const data = e.data;
+  // Terminate any previous worker before creating a new one.
+  stopSpeedTest();
+
+  activeWorker = new Worker(
+    new URL('./speedTest.worker.js', import.meta.url),
+    { type: 'module' },
+  );
+
+  activeWorker.onmessage = ({ data }) => {
+    // Validate type field before dispatching — ignore unknown messages.
+    if (!data || typeof data.type !== 'string') return;
+
     switch (data.type) {
-      case 'status':
+      case MSG.STATUS:
         callbacks.onStatus(data.message);
         break;
-      case 'pingResult':
+      case MSG.PING_RESULT:
         callbacks.onPing(data.ping, data.jitter);
         break;
-      case 'downloadProgress':
+      case MSG.DOWNLOAD_PROGRESS:
         callbacks.onDownloadProgress(data.speed);
         break;
-      case 'downloadComplete':
-        callbacks.onDownloadComplete(data.speed, data.loadedPing);
+      case MSG.DOWNLOAD_COMPLETE:
+        callbacks.onDownloadComplete(data.speed, data.loadedPing ?? 0);
         break;
-      case 'uploadProgress':
+      case MSG.UPLOAD_PROGRESS:
         callbacks.onUploadProgress(data.speed);
         break;
-      case 'uploadComplete':
-        callbacks.onUploadComplete(data.speed, data.loadedPing);
+      case MSG.UPLOAD_COMPLETE:
+        callbacks.onUploadComplete(data.speed, data.loadedPing ?? 0);
+        break;
+      case MSG.ERROR:
+        callbacks.onError(new Error(data.message ?? 'Worker error'));
+        break;
+      default:
+        // Unknown type — discard silently.
         break;
     }
   };
 
-  worker.onerror = (err) => {
+  activeWorker.onerror = (err) => {
     callbacks.onError(err);
   };
 
-  worker.postMessage({ type: 'start' });
+  activeWorker.postMessage({ type: MSG.START });
 };
 
+/**
+ * Terminate the active worker if one is running.
+ * Safe to call even when no test is in progress.
+ */
 export const stopSpeedTest = () => {
-  if (worker) {
-    worker.terminate();
-    worker = null;
-  }
+  activeWorker?.terminate();
+  activeWorker = null;
 };
-

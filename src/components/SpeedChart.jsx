@@ -1,39 +1,77 @@
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+/**
+ * @file SpeedChart.jsx
+ * Real-time area chart for download / upload speed over time.
+ * Memoized — only re-renders when `data` or `type` changes.
+ */
 
-export default function SpeedChart({ data, type }) {
-  if (!data || data.length === 0) return null;
+import { memo } from 'react';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
-  // type is 'download' or 'upload'
-  const color = type === 'download' ? '#6366f1' : '#8b5cf6'; // Indigo for DL, Violet for UL
+const TOOLTIP_STYLE = {
+  background:   '#111114',
+  border:       '1px solid #222228',
+  borderRadius: '6px',
+  padding:      '4px 10px',
+  fontSize:     '0.72rem',
+  color:        '#f2f2f4',
+};
+
+/** @param {number} v */
+const formatValue = (v) => `${typeof v === 'number' ? v.toFixed(1) : '--'} Mbps`;
+
+/**
+ * @param {{ data: Array<{time:number,speed:number}>, type: 'download'|'upload' }} props
+ */
+const SpeedChart = memo(({ data, type }) => {
+  if (!data || data.length < 2) return null;
+
+  const color = type === 'upload' ? 'var(--green)' : 'var(--accent)';
+  const gradId = `grad-${type}`;
 
   return (
-    <div style={{ width: '100%', height: 120, marginTop: '20px' }}>
+    <div style={{ width: '100%', height: 72 }}>
       <ResponsiveContainer>
-        <AreaChart data={data} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
+        <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id={`color${type}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
-              <stop offset="95%" stopColor={color} stopOpacity={0}/>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor={color} stopOpacity={0.15} />
+              <stop offset="100%" stopColor={color} stopOpacity={0}    />
             </linearGradient>
           </defs>
+
           <XAxis dataKey="time" hide />
-          <YAxis hide domain={['auto', 'auto']} />
-          <Tooltip 
-            contentStyle={{ backgroundColor: 'rgba(10, 10, 12, 0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-            itemStyle={{ color: '#fff' }}
+          <YAxis   hide domain={['auto', 'auto']} />
+
+          <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            itemStyle={{ color }}
             labelStyle={{ display: 'none' }}
+            formatter={formatValue}
           />
-          <Area 
-            type="monotone" 
-            dataKey="speed" 
-            stroke={color} 
-            strokeWidth={3}
-            fillOpacity={1} 
-            fill={`url(#color${type})`}
-            isAnimationActive={false} // Disable Recharts default animation for real-time data to avoid jumping
+
+          <Area
+            type="monotone"
+            dataKey="speed"
+            stroke={color}
+            strokeWidth={1.5}
+            fill={`url(#${gradId})`}
+            isAnimationActive={false}
+            dot={false}
+            activeDot={{ r: 3, strokeWidth: 0 }}
           />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   );
-}
+});
+
+SpeedChart.displayName = 'SpeedChart';
+
+export default SpeedChart;

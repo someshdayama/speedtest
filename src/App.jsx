@@ -1,340 +1,326 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowDownCircle,
-  ArrowUpCircle,
-  Activity,
-  Wifi,
-  Globe,
-  Zap,
-  History
-} from 'lucide-react';
-import { getNetworkInfo, startSpeedTest, stopSpeedTest } from './utils/speedTest';
-import SpeedChart from './components/SpeedChart';
+/**
+ * @file App.jsx
+ * Root component — composes hooks and components.
+ * Contains no business logic; all state lives in useSpeedTest / useNetworkInfo.
+ */
+
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+// eslint-disable-next-line no-unused-vars
+import { motion, AnimatePresence, animate } from 'framer-motion';
+import { Zap, ArrowDown, ArrowUp, Activity, History } from 'lucide-react';
+
+import useSpeedTest            from './hooks/useSpeedTest.js';
+import useNetworkInfo          from './hooks/useNetworkInfo.js';
+
+import ArcGauge                from './components/ArcGauge.jsx';
+import PhaseBar                from './components/PhaseBar.jsx';
+import StatCard                from './components/StatCard.jsx';
+import ScoreCard               from './components/ScoreCard.jsx';
+import NetworkCard             from './components/NetworkCard.jsx';
+import SpeedChart              from './components/SpeedChart.jsx';
+import HistoryModal            from './components/HistoryModal.jsx';
+import ParticleBackground      from './components/ParticleBackground.jsx';
+
+import { STATUS } from './constants.js';
 import './App.css';
 
-function App() {
-  const [status, setStatus] = useState('idle'); // idle, pinging, downloading, uploading, finished
-  const [metrics, setMetrics] = useState({ ping: 0, jitter: 0, download: 0, upload: 0, loadedPing: 0 });
-  const [networkInfo, setNetworkInfo] = useState({
-    provider: 'Checking...', type: 'Unknown', downlink: 'N/A', rtt: 'N/A', ip: 'Checking...'
-  });
+const ICON_DOWNLOAD = <ArrowDown size={13} />;
+const ICON_UPLOAD   = <ArrowUp size={13} />;
+const ICON_PING     = <Activity size={13} />;
+const ICON_LOADED   = <Activity size={13} />;
 
-  const [displaySpeed, setDisplaySpeed] = useState(0);
-  const [maxDialSpeed, setMaxDialSpeed] = useState(100);
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-  // Real-time chart data
-  const [dlData, setDlData] = useState([]);
-  const [ulData, setUlData] = useState([]);
+const PHASE_LABELS = {
+  [STATUS.IDLE]:        'READY',
+  [STATUS.PINGING]:     'Latency',
+  [STATUS.DOWNLOADING]: 'Download',
+  [STATUS.UPLOADING]:   'Upload',
+  [STATUS.FINISHED]:    'Done',
+};
 
-  // History Modal
+/**
+ * Format a speed number for the large readout.
+ * @param {number} n
+ * @returns {string}
+ */
+const fmtBig = (n) =>
+  n <= 0 ? '0.0' : n >= 100 ? n.toFixed(0) : n.toFixed(1);
+
+/**
+ * Pick the value shown in the big gauge readout.
+ * @param {string} status
+ * @param {{ ping: number, download: number }} metrics
+ * @param {number} displaySpeed
+ * @returns {number}
+ */
+const resolveDisplayNum = (status, metrics, displaySpeed) => {
+  if (status === STATUS.PINGING)  return metrics.ping;
+  if (status === STATUS.FINISHED) return metrics.download;
+  return displaySpeed > 0 ? displaySpeed : 0;
+};
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const {
+    status, metrics, displaySpeed, gaugeMax,
+    dlData, ulData, history, isRunning, score,
+    setProvider, runTest, clearHistory,
+  } = useSpeedTest();
+
+  const networkInfo = useNetworkInfo();
+
+  // Sync the provider string into the speed-test hook so history entries
+  // get the right label — happens once per detected change.
+  useEffect(() => {
+    setProvider(networkInfo.provider);
+  }, [networkInfo.provider, setProvider]);
+
   const [showHistory, setShowHistory] = useState(false);
-  const [testHistory, setTestHistory] = useState([]);
+  const openHistory  = useCallback(() => setShowHistory(true),  []);
+  const closeHistory = useCallback(() => setShowHistory(false), []);
 
+  // ── Derived values (memoized) ──
+  const displayNum = resolveDisplayNum(status, metrics, displaySpeed);
+  const [animatedSpeed, setAnimatedSpeed] = useState(0);
+
+  const animatedSpeedRef = useRef(0);
   useEffect(() => {
-    getNetworkInfo().then(info => setNetworkInfo(info));
-    const saved = localStorage.getItem('speedTestHistory');
-    if (saved) setTestHistory(JSON.parse(saved));
-  }, []);
+    animatedSpeedRef.current = animatedSpeed;
+  }, [animatedSpeed]);
 
-  const circleRadius = 110;
-  const circumference = 2 * Math.PI * circleRadius;
-  const dialPercentage = Math.min((displaySpeed / maxDialSpeed) * 100, 100);
-  const strokeDashoffset = circumference - (dialPercentage / 100) * circumference;
-
+  // Animate speed with a smooth spring to keep the digits and gauge in perfect sync
   useEffect(() => {
-    if (displaySpeed > maxDialSpeed * 0.9) setMaxDialSpeed(prev => prev * 2);
-    else if (displaySpeed < maxDialSpeed * 0.2 && maxDialSpeed > 100 && status === 'idle') setMaxDialSpeed(100);
-  }, [displaySpeed, maxDialSpeed, status]);
-
-  const runTest = () => {
-    if (status !== 'idle' && status !== 'finished') return;
-
-    setStatus('pinging');
-    setDisplaySpeed(0);
-    setMaxDialSpeed(100);
-    setMetrics({ ping: 0, jitter: 0, download: 0, upload: 0, loadedPing: 0 });
-    setDlData([]);
-    setUlData([]);
-
-    let startTime = Date.now();
-
-    startSpeedTest({
-      onStatus: (msg) => setStatus(msg),
-      onPing: (ping, jitter) => {
-        setMetrics(prev => ({ ...prev, ping, jitter }));
-        setDisplaySpeed(ping); // momentarily show ping
+    const controls = animate(animatedSpeedRef.current, displayNum, {
+      type: 'spring',
+      damping: 28,
+      stiffness: 120,
+      restDelta: 0.05,
+      onUpdate: (latest) => {
+        setAnimatedSpeed(latest);
       },
-      onDownloadProgress: (speed) => {
-        setDisplaySpeed(speed);
-        setMetrics(prev => ({ ...prev, download: speed }));
-        setDlData(prev => [...prev, { time: Date.now() - startTime, speed }]);
-      },
-      onDownloadComplete: (speed, loadedPing) => {
-        setDisplaySpeed(speed);
-        setMetrics(prev => ({ ...prev, download: speed, loadedPing: loadedPing || prev.loadedPing }));
-      },
-      onUploadProgress: (speed) => {
-        setDisplaySpeed(speed);
-        setMetrics(prev => ({ ...prev, upload: speed }));
-        setUlData(prev => [...prev, { time: Date.now() - startTime, speed }]);
-      },
-      onUploadComplete: (speed, loadedPing) => {
-        setMetrics(prevMetrics => {
-          const finalMetrics = { ...prevMetrics, upload: speed, loadedPing: loadedPing || prevMetrics.loadedPing };
-
-          setTestHistory(prevHistory => {
-            const newHistory = [{
-              date: new Date().toISOString(),
-              download: finalMetrics.download,
-              upload: finalMetrics.upload,
-              ping: finalMetrics.ping,
-              provider: networkInfo.provider
-            }, ...prevHistory].slice(0, 50);
-
-            localStorage.setItem('speedTestHistory', JSON.stringify(newHistory));
-            return newHistory;
-          });
-
-          return finalMetrics;
-        });
-        setDisplaySpeed(speed);
-      },
-      onError: (err) => {
-        console.error(err);
-        setStatus('idle');
-      }
     });
-  };
+    return () => controls.stop();
+  }, [displayNum]);
 
-  const getDialColor = () => {
-    if (status === 'downloading') return 'url(#gradient-dl)';
-    if (status === 'uploading') return 'url(#gradient-ul)';
-    if (status === 'finished') return 'url(#gradient-dl)';
-    return 'rgba(255,255,255,0.1)';
-  };
+  const gaugePercent = useMemo(
+    () => Math.min((animatedSpeed / gaugeMax) * 100, 100),
+    [animatedSpeed, gaugeMax],
+  );
 
-  const currentUnit = (status === 'pinging') ? 'ms' : 'Mbps';
-  const getStatusLabel = () => {
-    switch (status) {
-      case 'idle': return 'READY';
-      case 'pinging': return 'LATENCY...';
-      case 'downloading': return 'DOWNLOAD...';
-      case 'uploading': return 'UPLOAD...';
-      case 'finished': return 'DOWNLOAD SPEED';
-      default: return '';
-    }
-  };
+  const displayString = fmtBig(animatedSpeed);
+
+  const unitLabel   = status === STATUS.PINGING ? 'ms' : 'Mbps';
+  const phaseLabel  = PHASE_LABELS[status] ?? '';
+  const numColor    = status === STATUS.UPLOADING
+    ? ' ul'
+    : (status === STATUS.DOWNLOADING || status === STATUS.FINISHED ? ' dl' : '');
+
+  const showScore = status === STATUS.FINISHED && score > 0;
+
+  const showChart = dlData.length > 1 || ulData.length > 1;
+  const chartData = status === STATUS.UPLOADING ? ulData : dlData;
+  const chartType = status === STATUS.UPLOADING ? 'upload' : 'download';
+
+  const btnLabel  = status === STATUS.FINISHED
+    ? 'Test Again'
+    : isRunning ? 'Testing…' : 'Start Test';
 
   return (
     <div className="app-container">
+      {/* Background decoration */}
+      <div className="bg-grid-overlay" aria-hidden="true" />
+      <ParticleBackground speed={animatedSpeed} status={status} />
+
+      {/* ── Header ── */}
       <header className="header">
-        <motion.h1
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <span style={{ WebkitTextFillColor: 'initial', display: 'flex' }}>
-            <Zap size={38} className="text-accent" />
-          </span>
-          Velocity
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          True Network Performance Insights
-        </motion.p>
+        <div className="header-brand">
+          <Zap size={20} className="header-icon" aria-hidden="true" />
+          <div className="header-wordmark">
+            <h1>Velocity</h1>
+            <p className="header-tagline">True Network Performance Insights</p>
+          </div>
+        </div>
+
+        <nav className="header-actions" aria-label="App controls">
+          <button
+            className="history-btn"
+            onClick={openHistory}
+            aria-label="View test history"
+          >
+            <History size={13} aria-hidden="true" />
+            History
+          </button>
+        </nav>
       </header>
 
+      {/* ── Dashboard ── */}
       <main className="dashboard">
-        {/* Left Column: Speedometer */}
-        <motion.div
-          className="speed-column"
-          initial={{ opacity: 0, x: -30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, type: 'spring' }}
-        >
-          <div className={`speedometer-container${status !== 'idle' && status !== 'finished' ? ' is-running' : ''}`}>
-            <div className="circle-progress">
-              <svg viewBox="0 0 240 240">
-                <defs>
-                  <linearGradient id="gradient-dl" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="var(--accent-primary)" />
-                    <stop offset="100%" stopColor="var(--accent-secondary)" />
-                  </linearGradient>
-                  <linearGradient id="gradient-ul" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="var(--accent-secondary)" />
-                    <stop offset="100%" stopColor="var(--accent-tertiary)" />
-                  </linearGradient>
-                </defs>
-                <circle cx="120" cy="120" r={circleRadius} className="circle-bg" />
-                <motion.circle
-                  cx="120"
-                  cy="120"
-                  r={circleRadius}
-                  className="circle-bar"
-                  strokeDasharray={circumference}
-                  initial={{ strokeDashoffset: circumference }}
-                  animate={{ strokeDashoffset }}
-                  transition={{ type: 'tween', ease: 'easeOut', duration: 0.3 }}
-                  stroke={getDialColor()}
-                />
-              </svg>
 
-              <div className="speed-value-display">
+        {/* Left — Gauge + button */}
+        <motion.section
+          className="speed-column"
+          aria-label="Speed gauge"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div
+            className={`speedometer-card ${status}${isRunning ? ' is-running' : ''}`}
+            style={{ '--speed-pct': gaugePercent / 100 }}
+          >
+
+            {/* Phase indicator */}
+            <PhaseBar status={status} />
+
+            {/*
+              Gauge block: the SVG arc and the overlaid readout live inside
+              the same positioned container so the number sits exactly at
+              the arc's circle-centre (top: 54 %, left: 50 %).
+            */}
+            <div className="gauge-block">
+              <div className="gauge-svg-wrap" aria-hidden="true">
+                <ArcGauge percent={gaugePercent} phase={status} max={gaugeMax} />
+              </div>
+
+              <div
+                className="gauge-readout"
+                aria-live="polite"
+                aria-label={`${fmtBig(displayNum)} ${unitLabel}`}
+              >
                 <motion.div
-                  className="value"
-                  // Key forces re-animation jump when switching statuses
-                  key={status}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.3 }}
+                  className={`speed-number${numColor}`}
+                  aria-hidden="true"
                 >
-                  {status === 'pinging' ? metrics.ping : (
-                    status === 'finished' ? metrics.download.toFixed(1) :
-                      (displaySpeed > 0 ? displaySpeed.toFixed(1) : '0.0')
-                  )}
+                  {displayString}
                 </motion.div>
-                <div className="unit">{status === 'finished' ? 'Mbps' : currentUnit}</div>
-                <div className="label">{getStatusLabel()}</div>
+
+                <div className="speed-meta" aria-hidden="true">
+                  <span className="speed-unit">{unitLabel}</span>
+                  <span className="speed-label">{phaseLabel}</span>
+                </div>
               </div>
             </div>
 
-            {/* Real-time Chart nested inside the container for a clean look */}
+            {/* Ping + Jitter row */}
+            <div className="quick-stats">
+              <div className="qs-item">
+                <div className="qs-label">Ping</div>
+                <div
+                  className={`qs-value${metrics.ping > 0 ? ' amber' : ''}`}
+                  aria-live="polite"
+                >
+                  {metrics.ping > 0 ? metrics.ping : '--'}
+                </div>
+                <div className="qs-unit">ms</div>
+              </div>
+
+              <div className="qs-divider" aria-hidden="true" />
+
+              <div className="qs-item">
+                <div className="qs-label">Jitter</div>
+                <div className="qs-value" aria-live="polite">
+                  {metrics.jitter > 0 ? metrics.jitter.toFixed(1) : '--'}
+                </div>
+                <div className="qs-unit">ms</div>
+              </div>
+            </div>
+
+            {/* Live chart — mounts only when data is available */}
             <AnimatePresence>
-              {(status === 'downloading' || status === 'uploading' || status === 'finished') && (
+              {showChart && (
                 <motion.div
+                  className="chart-wrap"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="chart-wrapper"
+                  transition={{ duration: 0.22 }}
                 >
-                  <SpeedChart
-                    data={status === 'uploading' ? ulData : dlData}
-                    type={status === 'uploading' ? 'upload' : 'download'}
-                  />
+                  <div className="chart-heading" aria-hidden="true">
+                    {chartType === 'upload' ? 'Upload' : 'Download'} — live
+                  </div>
+                  <SpeedChart data={chartData} type={chartType} />
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
+          {/* CTA */}
           <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
             className="action-button"
             onClick={runTest}
-            disabled={status !== 'idle' && status !== 'finished'}
+            disabled={isRunning}
+            aria-label={btnLabel}
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
           >
-            {status === 'finished' ? 'TEST AGAIN' : (status === 'idle' ? 'START TEST' : 'TESTING...')}
+            {btnLabel}
           </motion.button>
-        </motion.div>
+        </motion.section>
 
-        {/* Right Column: Stats & Info */}
-        <motion.div
-          className="stats-grid"
-          initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: { opacity: 0 },
-            visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
-          }}
+        {/* Right — Stats, score, network */}
+        <motion.section
+          className="stats-column"
+          aria-label="Test results"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.06 }}
         >
-          <StatCard icon={<ArrowDownCircle className="stat-icon download" />} title="Download" value={metrics.download} unit="Mbps" glow="indigo" />
-          <StatCard icon={<ArrowUpCircle className="stat-icon upload" />} title="Upload" value={metrics.upload} unit="Mbps" glow="violet" />
-          <StatCard icon={<Activity className="stat-icon ping" />} title="Ping" value={metrics.ping} unit="ms" />
-          <StatCard icon={<Activity className="stat-icon jitter" />} title="Bufferbloat" value={metrics.loadedPing || '--'} unit="ms" />
+          {/* 2×2 metric cards */}
+          <div className="stat-cards">
+            <StatCard
+              label="DOWNLOAD SPEED" icon={ICON_DOWNLOAD}
+              value={metrics.download} unit="Mbps"
+              colorClass="accent" fillClass=""
+              max={500}
+            />
+            <StatCard
+              label="Upload"   icon={ICON_UPLOAD}
+              value={metrics.upload}   unit="Mbps"
+              colorClass="green"  fillClass="green"
+              max={200}
+            />
+            <StatCard
+              label="Ping"     icon={ICON_PING}
+              value={metrics.ping}     unit="ms"
+              colorClass="amber"  fillClass="amber"
+              max={200} invertBar
+            />
+            <StatCard
+              label="Bufferbloat" icon={ICON_LOADED}
+              value={metrics.loadedPing || null} unit="ms"
+              colorClass="amber"  fillClass="amber"
+              max={300} invertBar
+            />
+          </div>
 
-          <motion.div
-            className="network-info"
-            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
-          >
-            <InfoItem label="PROVIDER" icon={<Globe size={16} />} value={networkInfo.provider} />
-            <InfoItem label="CONNECTION" icon={<Wifi size={16} />} value={networkInfo.type.toUpperCase()} />
-            <InfoItem label="EST. DOWNLINK" icon={<ArrowDownCircle size={16} />} value={networkInfo.downlink} />
-            <InfoItem label="IP ADDRESS" icon={<Activity size={16} />} value={networkInfo.ip} />
-          </motion.div>
+          {/* Score panel — appears after test finishes */}
+          <AnimatePresence>
+            {showScore && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
+              >
+                <ScoreCard score={score} metrics={metrics} />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <motion.div
-            className="history-controls"
-            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
-            style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', marginTop: '1rem' }}
-          >
-            <button className="history-btn" onClick={() => setShowHistory(true)}>
-              <History size={16} /> View Past Tests
-            </button>
-          </motion.div>
-
-        </motion.div>
+          {/* Network info */}
+          <NetworkCard info={networkInfo} />
+        </motion.section>
       </main>
 
-      {/* History Modal Overlay */}
-      <AnimatePresence>
-        {showHistory && (
-          <motion.div
-            className="history-modal-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowHistory(false)}
-          >
-            <motion.div
-              className="history-modal-content"
-              initial={{ scale: 0.9, y: 20, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 20, opacity: 0 }}
-              onClick={e => e.stopPropagation()} // Prevent close on modal click
-            >
-              <div className="history-header">
-                <h2>Test History</h2>
-                <button onClick={() => setShowHistory(false)} className="close-btn">&times;</button>
-              </div>
-              <div className="history-list">
-                {testHistory.length === 0 ? (
-                  <p className="no-history">No tests run yet.</p>
-                ) : (
-                  testHistory.map((test, i) => (
-                    <div key={i} className="history-row">
-                      <div className="h-date">{new Date(test.date).toLocaleString()}</div>
-                      <div className="h-stat down"><ArrowDownCircle size={14} /> {test.download.toFixed(1)}</div>
-                      <div className="h-stat up"><ArrowUpCircle size={14} /> {test.upload.toFixed(1)}</div>
-                      <div className="h-stat"><Activity size={14} /> {test.ping}ms</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ── History Modal ── */}
+      <HistoryModal
+        open={showHistory}
+        onClose={closeHistory}
+        history={history}
+        clearHistory={clearHistory}
+      />
     </div>
   );
 }
-
-function StatCard({ icon, title, value, unit, glow }) {
-  return (
-    <motion.div
-      className="stat-card"
-      variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
-      whileHover={{ scale: 1.02 }}
-    >
-      <div className="stat-header">{icon} {title}</div>
-      <div className={`stat-value ${glow ? `text-glow-${glow}` : ''}`}>
-        {(typeof value === 'number' && value > 0) ? value.toFixed(1).replace(/\.0$/, '') : (typeof value === 'string' ? value : '--')}
-        <span className="stat-unit">{unit}</span>
-      </div>
-    </motion.div>
-  );
-}
-
-function InfoItem({ label, icon, value }) {
-  return (
-    <div className="info-item">
-      <span className="info-label">{label}</span>
-      <span className="info-value">{icon} {value}</span>
-    </div>
-  );
-}
-
-export default App;
