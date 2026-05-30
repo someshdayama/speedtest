@@ -66,6 +66,7 @@ export default function App() {
   const {
     status, metrics, displaySpeed, gaugeMax,
     dlData, ulData, history, isRunning, score,
+    dlStability, ulStability,
     setProvider, runTest, clearHistory,
   } = useSpeedTest();
 
@@ -128,10 +129,12 @@ export default function App() {
     : isRunning ? 'Testing…' : 'Start Test';
 
   return (
-    <div className="app-container">
+    <>
       {/* Background decoration */}
       <div className="bg-grid-overlay" aria-hidden="true" />
       <ParticleBackground speed={animatedSpeed} status={status} />
+
+      <div className="app-container">
 
       {/* ── Header ── */}
       <header className="header">
@@ -310,7 +313,11 @@ export default function App() {
           </AnimatePresence>
 
           {/* Network info */}
-          <NetworkCard info={networkInfo} />
+          <NetworkCard
+            info={networkInfo}
+            dlStability={dlStability}
+            ulStability={ulStability}
+          />
         </motion.section>
       </main>
 
@@ -321,6 +328,7 @@ export default function App() {
         history={history}
         clearHistory={clearHistory}
       />
-    </div>
+      </div>
+    </>
   );
 }

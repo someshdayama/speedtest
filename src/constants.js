@@ -28,9 +28,11 @@ export const TIMEOUTS = Object.freeze({
 // ─── Test parameters ─────────────────────────────────────────────────────────
 
 export const TEST = Object.freeze({
-  CONNECTIONS:       4,
-  UPLOAD_BYTES:      10 * 1024 * 1024,
-  PROGRESS_INTERVAL: 100,
+  CONNECTIONS:          4,
+  PROGRESS_INTERVAL:    100,
+  UPLOAD_INITIAL_CHUNK: 256 * 1024,
+  UPLOAD_MIN_CHUNK:      64 * 1024,
+  UPLOAD_MAX_CHUNK:     2 * 1024 * 1024,
 });
 
 // ─── Gauge geometry ───────────────────────────────────────────────────────────

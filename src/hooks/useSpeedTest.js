@@ -49,6 +49,26 @@ export const calcScore = (dl, ul, ping) => {
 };
 
 /**
+ * Calculate standard deviation stability percentage from progress samples.
+ * @param {Array<{speed: number}>} samples
+ * @returns {number} stability index percentage (50-100) or 0 if no samples
+ */
+export const calcStability = (samples) => {
+  if (!samples || samples.length < 3) return 0;
+  const speeds = samples.map((s) => s.speed).filter((v) => typeof v === 'number' && v > 0);
+  if (speeds.length < 3) return 0;
+
+  const mean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+  if (mean === 0) return 0;
+
+  const variance = speeds.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / speeds.length;
+  const stdDev = Math.sqrt(variance);
+  const cv = stdDev / mean;
+
+  return Math.max(50, Math.min(100, Math.round((1 - cv) * 100)));
+};
+
+/**
  * Safely parse history from localStorage.
  * Returns an empty array on any parse / schema error.
  * @returns {Array<object>}
@@ -109,6 +129,12 @@ const useSpeedTest = () => {
   const [dlData,       setDlData]       = useState([]);
   const [ulData,       setUlData]       = useState([]);
   const [history,      setHistory]      = useState(loadHistory);
+
+  // Maintain reference to latest metrics state to avoid stale closure during upload callback
+  const metricsRef = useRef(metrics);
+  useEffect(() => {
+    metricsRef.current = metrics;
+  }, [metrics]);
 
   // Stable ref for networkInfo so upload-complete closure doesn't go stale.
   const networkInfoRef = useRef('Unknown');
@@ -177,28 +203,30 @@ const useSpeedTest = () => {
       },
 
       onUploadComplete: (speed, loadedPing) => {
-        setMetrics((prev) => {
-          const final = {
-            ...prev,
-            upload:     speed,
-            loadedPing: loadedPing || prev.loadedPing,
+        // 1. Update the metrics state with final upload speeds
+        setMetrics((prev) => ({
+          ...prev,
+          upload:     speed,
+          loadedPing: loadedPing || prev.loadedPing,
+        }));
+
+        // 2. Obtain the latest completed metrics via the ref to avoid stale closures
+        const latestMetrics = metricsRef.current;
+
+        // 3. Append to history exactly once (this block runs exactly once as it is outside the state updater callback)
+        setHistory((h) => {
+          const entry = {
+            date:     new Date().toISOString(),
+            download: latestMetrics.download,
+            upload:   speed,
+            ping:     latestMetrics.ping,
+            provider: networkInfoRef.current,
           };
-
-          setHistory((h) => {
-            const entry = {
-              date:     new Date().toISOString(),
-              download: final.download,
-              upload:   final.upload,
-              ping:     final.ping,
-              provider: networkInfoRef.current,
-            };
-            const next = [entry, ...h].slice(0, LIMITS.MAX_HISTORY);
-            saveHistory(next);
-            return next;
-          });
-
-          return final;
+          const next = [entry, ...h].slice(0, LIMITS.MAX_HISTORY);
+          saveHistory(next);
+          return next;
         });
+
         updateSpeed(speed);
       },
 
@@ -221,6 +249,9 @@ const useSpeedTest = () => {
     [metrics],
   );
 
+  const dlStability = useMemo(() => calcStability(dlData), [dlData]);
+  const ulStability = useMemo(() => calcStability(ulData), [ulData]);
+
   return {
     status,
     metrics,
@@ -231,6 +262,8 @@ const useSpeedTest = () => {
     history,
     isRunning,
     score,
+    dlStability,
+    ulStability,
     setProvider,
     runTest,
     clearHistory,

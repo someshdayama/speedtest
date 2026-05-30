@@ -946,3 +946,71 @@
   pointer-events: none;
   z-index: -1;
 }
+
+/* ---------- Diagnostics Collapsible Panel ---------- */
+.diagnostics-toggle-btn {
+  width: 100%;
+  padding: 0.85rem 1.3rem;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: var(--font-heading);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.diagnostics-toggle-btn:hover {
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.diagnostics-panel {
+  padding: 0.5rem 1.3rem 1.3rem;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.diag-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.diag-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.02);
+  padding-bottom: 0.4rem;
+}
+
+.diag-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.diag-label {
+  color: var(--text-3);
+  font-family: var(--font-heading);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.diag-val {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+.diag-val.green { color: var(--green); text-shadow: 0 0 10px rgba(61, 214, 140, 0.15); }
+.diag-val.amber { color: var(--amber); text-shadow: 0 0 10px rgba(240, 180, 41, 0.15); }

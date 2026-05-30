@@ -19,6 +19,16 @@ import { ENDPOINTS, TIMEOUTS, TEST, MSG, STATUS } from '../constants.js';
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
 /**
+ * Append cache-busting query parameter.
+ * @param {string} url
+ * @returns {string}
+ */
+const appendCacheBuster = (url) => {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}_=${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+};
+
+/**
  * Fetch with an explicit AbortController-based timeout.
  * Cleans up the timer in both success and error paths.
  *
@@ -47,7 +57,7 @@ const bufferbloat = (() => {
     try {
       const t0 = performance.now();
       await fetchWithTimeout(
-        ENDPOINTS.PING,
+        appendCacheBuster(ENDPOINTS.PING),
         { method: 'HEAD', cache: 'no-store' },
         TIMEOUTS.BUFFERBLOAT_REQ,
       );
@@ -85,11 +95,11 @@ const measurePing = async () => {
     const opts = { method: 'HEAD', cache: 'no-store' };
 
     const t1 = performance.now();
-    await fetchWithTimeout(ENDPOINTS.PING, opts, TIMEOUTS.PING_REQUEST);
+    await fetchWithTimeout(appendCacheBuster(ENDPOINTS.PING), opts, TIMEOUTS.PING_REQUEST);
     const l1 = Math.round(performance.now() - t1);
 
     const t2 = performance.now();
-    await fetchWithTimeout(ENDPOINTS.PING, opts, TIMEOUTS.PING_REQUEST);
+    await fetchWithTimeout(appendCacheBuster(ENDPOINTS.PING), opts, TIMEOUTS.PING_REQUEST);
     const l2 = Math.round(performance.now() - t2);
 
     return { ping: l1, jitter: Math.abs(l1 - l2) };
@@ -102,54 +112,153 @@ const measurePing = async () => {
 
 /**
  * Measure download speed by streaming parallel connections.
+ * Tracks metrics per connection to prevent race conditions.
  * @param {(speed: number) => void} onProgress
  * @returns {Promise<{ speed: number, loadedPing: number }>}
  */
 const measureDownload = async (onProgress) => {
   const deadline = performance.now() + TIMEOUTS.DOWNLOAD_MAX;
-  let totalBytes = 0;
   let isDone     = false;
   let lastReport = performance.now();
-  const start    = performance.now();
+  const abortController = new AbortController();
+
+  const conns = Array.from({ length: TEST.CONNECTIONS }, () => ({
+    bytesLoaded: 0,
+    transferStart: null,
+    actualStart: null,
+    actualBytes: 0,
+    warmupDone: false,
+  }));
 
   bufferbloat.start();
 
-  const runConnection = async () => {
+  const runConnection = async (index) => {
+    const conn = conns[index];
     try {
-      const res = await fetchWithTimeout(
-        ENDPOINTS.DOWNLOAD,
-        { cache: 'no-store' },
-        TIMEOUTS.DOWNLOAD_MAX,
+      const res = await fetch(
+        appendCacheBuster(ENDPOINTS.DOWNLOAD),
+        { cache: 'no-store', signal: abortController.signal }
       );
       if (!res.body) return;
 
       const reader = res.body.getReader();
-      while (!isDone && performance.now() < deadline) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (!isDone && performance.now() < deadline) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        totalBytes += value.byteLength;
+          const now = performance.now();
+          conn.bytesLoaded += value.byteLength;
 
-        const now = performance.now();
-        if (now - lastReport >= TEST.PROGRESS_INTERVAL) {
-          const elapsed = (now - start) / 1_000;
-          onProgress(((totalBytes * 8) / elapsed) / 1_000_000);
-          lastReport = now;
+          if (conn.transferStart === null && value.byteLength > 0) {
+            conn.transferStart = now;
+          }
+
+          if (conn.transferStart !== null && !conn.warmupDone) {
+            // Discard first 1 second of transfer to let TCP buffer windows warm up
+            if (now - conn.transferStart >= 1000) {
+              conn.warmupDone = true;
+              conn.actualStart = now;
+              conn.actualBytes = value.byteLength;
+            }
+          } else if (conn.warmupDone) {
+            conn.actualBytes += value.byteLength;
+          }
+
+          if (now - lastReport >= TEST.PROGRESS_INTERVAL) {
+            let aggregateSpeed = 0;
+            let warmedUpCount = 0;
+            let earliestActualStart = null;
+            let totalWarmedUpBytes = 0;
+
+            let earliestTransferStart = null;
+            let totalRawBytes = 0;
+
+            for (let i = 0; i < TEST.CONNECTIONS; i++) {
+              const c = conns[i];
+              if (c.transferStart !== null) {
+                if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
+                  earliestTransferStart = c.transferStart;
+                }
+                totalRawBytes += c.bytesLoaded;
+              }
+
+              if (c.warmupDone && c.actualStart !== null) {
+                warmedUpCount++;
+                if (earliestActualStart === null || c.actualStart < earliestActualStart) {
+                  earliestActualStart = c.actualStart;
+                }
+                totalWarmedUpBytes += c.actualBytes;
+              }
+            }
+
+            if (warmedUpCount > 0 && earliestActualStart !== null) {
+              const elapsed = (now - earliestActualStart) / 1000;
+              if (elapsed > 0.05) {
+                aggregateSpeed = ((totalWarmedUpBytes * 8) / elapsed) / 1_000_000;
+              }
+            } else if (earliestTransferStart !== null) {
+              const elapsed = (now - earliestTransferStart) / 1000;
+              if (elapsed > 0.05) {
+                aggregateSpeed = ((totalRawBytes * 8) / elapsed) / 1_000_000;
+              }
+            }
+
+            if (aggregateSpeed > 0) {
+              onProgress(aggregateSpeed);
+            }
+            lastReport = now;
+          }
         }
+      } finally {
+        reader.cancel();
       }
-      reader.cancel();
     } catch {
       // connection timed out or was cancelled — expected on test end
     }
   };
 
-  const tasks   = Array.from({ length: TEST.CONNECTIONS }, runConnection);
+  const tasks   = Array.from({ length: TEST.CONNECTIONS }, (_, i) => runConnection(i));
   const timeout = new Promise(r => setTimeout(r, TIMEOUTS.DOWNLOAD_MAX));
   await Promise.race([Promise.all(tasks), timeout]);
 
   isDone = true;
-  const elapsed   = Math.max((performance.now() - start) / 1_000, 0.001);
-  const speed     = ((totalBytes * 8) / elapsed) / 1_000_000;
+  abortController.abort(); // Cancel any lingering download stream reads immediately
+
+  const now = performance.now();
+
+  let earliestActualStart = null;
+  let totalWarmedUpBytes = 0;
+  let earliestTransferStart = null;
+  let totalRawBytes = 0;
+  let warmedUpCount = 0;
+
+  for (let i = 0; i < TEST.CONNECTIONS; i++) {
+    const c = conns[i];
+    if (c.transferStart !== null) {
+      if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
+        earliestTransferStart = c.transferStart;
+      }
+      totalRawBytes += c.bytesLoaded;
+    }
+    if (c.warmupDone && c.actualStart !== null) {
+      warmedUpCount++;
+      if (earliestActualStart === null || c.actualStart < earliestActualStart) {
+        earliestActualStart = c.actualStart;
+      }
+      totalWarmedUpBytes += c.actualBytes;
+    }
+  }
+
+  let speed = 0;
+  if (warmedUpCount > 0 && earliestActualStart !== null) {
+    const elapsed = (now - earliestActualStart) / 1000;
+    speed = ((totalWarmedUpBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
+  } else if (earliestTransferStart !== null) {
+    const elapsed = (now - earliestTransferStart) / 1000;
+    speed = ((totalRawBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
+  }
+
   const loadedPing = bufferbloat.stop();
 
   return { speed, loadedPing };
@@ -159,72 +268,165 @@ const measureDownload = async (onProgress) => {
 
 /**
  * Measure upload speed by POSTing random bytes via parallel connections.
- * Each connection gets its own fresh buffer — no shared ArrayBuffer.
- *
- * Note: Fetch API does not expose upload progress events, so speed is
- * estimated from wall-clock time vs bytes sent, updated via a polling
- * interval. This is the same approach used by Cloudflare Speed Test.
+ * Uses XMLHttpRequest in Web Worker to get true upload progress events.
  *
  * @param {(speed: number) => void} onProgress
  * @returns {Promise<{ speed: number, loadedPing: number }>}
  */
 const measureUpload = async (onProgress) => {
-  const start     = performance.now();
-  const deadline  = start + TIMEOUTS.UPLOAD_MAX;
-  let totalBytes  = 0;
-  let isDone      = false;
-  let lastReport  = start;
+  const deadline = performance.now() + TIMEOUTS.UPLOAD_MAX;
+  let isDone     = false;
+  let lastReport = performance.now();
+  const abortController = new AbortController();
+
+  const conns = Array.from({ length: TEST.CONNECTIONS }, () => ({
+    bytesLoaded: 0,
+    transferStart: null,
+    actualStart: null,
+    actualBytes: 0,
+    warmupDone: false,
+    chunkSize: TEST.UPLOAD_INITIAL_CHUNK,
+  }));
 
   bufferbloat.start();
 
-  const runConnection = async () => {
-    // Fresh buffer per connection — no shared ArrayBuffer aliasing.
-    const payload    = new Uint8Array(TEST.UPLOAD_BYTES).fill(1);
-    const controller = new AbortController();
-    const timer      = setTimeout(() => controller.abort(), TIMEOUTS.UPLOAD_MAX);
+  const runConnection = async (index) => {
+    const conn = conns[index];
+    
+    while (!isDone && performance.now() < deadline) {
+      const currentChunkSize = conn.chunkSize;
+      const payload = new Uint8Array(currentChunkSize).fill(1);
+      const t0 = performance.now();
 
-    // Optimistic byte-counter: increment over time as the upload progresses.
-    const chunkSize  = TEST.UPLOAD_BYTES / (TIMEOUTS.UPLOAD_MAX / TEST.PROGRESS_INTERVAL);
-    let bytesCounted = 0;
+      try {
+        if (conn.transferStart === null) {
+          conn.transferStart = t0;
+        }
 
-    const poll = () => {
-      if (isDone || controller.signal.aborted) return;
-      bytesCounted = Math.min(bytesCounted + chunkSize, TEST.UPLOAD_BYTES);
-      totalBytes  += chunkSize;
+        await fetch(
+          appendCacheBuster(ENDPOINTS.UPLOAD),
+          {
+            method: 'POST',
+            body: payload,
+            headers: { 'Content-Type': 'text/plain' },
+            signal: abortController.signal,
+          }
+        );
 
-      const now = performance.now();
-      if (now - lastReport >= TEST.PROGRESS_INTERVAL) {
-        const elapsed = (now - start) / 1_000;
-        onProgress(((totalBytes * 8) / elapsed) / 1_000_000);
-        lastReport = now;
+        const now = performance.now();
+        const duration = now - t0;
+
+        // Dynamic chunk size adjustment based on connection speed
+        if (duration < 100) {
+          conn.chunkSize = Math.min(conn.chunkSize * 2, TEST.UPLOAD_MAX_CHUNK);
+        } else if (duration > 500) {
+          conn.chunkSize = Math.max(conn.chunkSize / 2, TEST.UPLOAD_MIN_CHUNK);
+        }
+
+        conn.bytesLoaded += currentChunkSize;
+
+        if (conn.transferStart !== null && !conn.warmupDone) {
+          if (now - conn.transferStart >= 1000) {
+            conn.warmupDone = true;
+            conn.actualStart = now;
+            conn.actualBytes = 0;
+          }
+        } else if (conn.warmupDone) {
+          conn.actualBytes += currentChunkSize;
+        }
+
+        if (now - lastReport >= TEST.PROGRESS_INTERVAL) {
+          let aggregateSpeed = 0;
+          let warmedUpCount = 0;
+          let earliestActualStart = null;
+          let totalWarmedUpBytes = 0;
+
+          let earliestTransferStart = null;
+          let totalRawBytes = 0;
+
+          for (let i = 0; i < TEST.CONNECTIONS; i++) {
+            const c = conns[i];
+            if (c.transferStart !== null) {
+              if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
+                earliestTransferStart = c.transferStart;
+              }
+              totalRawBytes += c.bytesLoaded;
+            }
+
+            if (c.warmupDone && c.actualStart !== null) {
+              warmedUpCount++;
+              if (earliestActualStart === null || c.actualStart < earliestActualStart) {
+                earliestActualStart = c.actualStart;
+              }
+              totalWarmedUpBytes += c.actualBytes;
+            }
+          }
+
+          if (warmedUpCount > 0 && earliestActualStart !== null) {
+            const elapsed = (now - earliestActualStart) / 1000;
+            if (elapsed > 0.05) {
+              aggregateSpeed = ((totalWarmedUpBytes * 8) / elapsed) / 1_000_000;
+            }
+          } else if (earliestTransferStart !== null) {
+            const elapsed = (now - earliestTransferStart) / 1000;
+            if (elapsed > 0.05) {
+              aggregateSpeed = ((totalRawBytes * 8) / elapsed) / 1_000_000;
+            }
+          }
+
+          if (aggregateSpeed > 0) {
+            onProgress(aggregateSpeed);
+          }
+          lastReport = now;
+        }
+      } catch {
+        if (isDone) break;
+        await new Promise(r => setTimeout(r, 100));
       }
-      if (bytesCounted < TEST.UPLOAD_BYTES && performance.now() < deadline) {
-        setTimeout(poll, TEST.PROGRESS_INTERVAL);
-      }
-    };
-    poll();
-
-    try {
-      await fetch(ENDPOINTS.UPLOAD, {
-        method:  'POST',
-        body:    payload,
-        headers: { 'Content-Type': 'application/octet-stream' },
-        signal:  controller.signal,
-      });
-    } catch {
-      // abort or network error — expected
-    } finally {
-      clearTimeout(timer);
     }
   };
 
-  const tasks   = Array.from({ length: TEST.CONNECTIONS }, runConnection);
+  const tasks   = Array.from({ length: TEST.CONNECTIONS }, (_, i) => runConnection(i));
   const timeout = new Promise(r => setTimeout(r, TIMEOUTS.UPLOAD_MAX));
   await Promise.race([Promise.all(tasks), timeout]);
 
   isDone = true;
-  const elapsed    = Math.max((performance.now() - start) / 1_000, 0.001);
-  const speed      = ((totalBytes * 8) / elapsed) / 1_000_000;
+  abortController.abort(); // Cancel any active POST fetches immediately
+
+  const now = performance.now();
+
+  let earliestActualStart = null;
+  let totalWarmedUpBytes = 0;
+  let earliestTransferStart = null;
+  let totalRawBytes = 0;
+  let warmedUpCount = 0;
+
+  for (let i = 0; i < TEST.CONNECTIONS; i++) {
+    const c = conns[i];
+    if (c.transferStart !== null) {
+      if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
+        earliestTransferStart = c.transferStart;
+      }
+      totalRawBytes += c.bytesLoaded;
+    }
+    if (c.warmupDone && c.actualStart !== null) {
+      warmedUpCount++;
+      if (earliestActualStart === null || c.actualStart < earliestActualStart) {
+        earliestActualStart = c.actualStart;
+      }
+      totalWarmedUpBytes += c.actualBytes;
+    }
+  }
+
+  let speed = 0;
+  if (warmedUpCount > 0 && earliestActualStart !== null) {
+    const elapsed = (now - earliestActualStart) / 1000;
+    speed = ((totalWarmedUpBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
+  } else if (earliestTransferStart !== null) {
+    const elapsed = (now - earliestTransferStart) / 1000;
+    speed = ((totalRawBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
+  }
+
   const loadedPing = bufferbloat.stop();
 
   return { speed, loadedPing };

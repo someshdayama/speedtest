@@ -10,11 +10,12 @@ class Particle {
   constructor(width, height) {
     this.reset(width, height);
     // Initially randomize x positions so they don't all start from the left edge
-    this.x = Math.random() * width;
+    this.x = Math.random() * (width + 120) - 100;
   }
 
   reset(width, height) {
-    this.x = 0;
+    // Start off-screen to the left to let streaks slide in naturally without clipping
+    this.x = -100;
     this.y = Math.random() * height;
     
     // Parallax depth: 0.2 (far, slow, tiny) to 1.0 (near, fast, larger)
