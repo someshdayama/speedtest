@@ -8,11 +8,12 @@
  *  - Backdrop click and Escape key both close the modal
  */
 
-import { memo, useEffect, useCallback } from 'react';
-// eslint-disable-next-line no-unused-vars
+import { memo, useEffect, useCallback, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { History, Activity, Trash2, Download } from 'lucide-react';
+import { History, Activity, Trash2, Download, ChevronRight } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
+import ExpertReportModal from './ExpertReportModal.jsx';
+import { exportHistoryPDF } from '../utils/pdfExport.js';
 
 /**
  * @param {{ date: string }} row
@@ -32,6 +33,8 @@ const fmt = (n) => (typeof n === 'number' && n > 0 ? n.toFixed(1) : '--');
  * @param {{ open: boolean, onClose: () => void, history: Array<object>, clearHistory: () => void }} props
  */
 const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
+  const [selectedReport, setSelectedReport] = useState(null);
+  const chartRef = useRef(null);
   // Close on Escape key
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') onClose();
@@ -43,25 +46,10 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [open, handleKeyDown]);
 
-  const exportCSV = () => {
-    if (history.length === 0) return;
-    const headers = ['Date', 'Provider', 'Download (Mbps)', 'Upload (Mbps)', 'Ping (ms)'];
-    const rows = history.map(h => [
-      new Date(h.date).toLocaleString(),
-      `"${h.provider || 'Unknown'}"`,
-      h.download.toFixed(1),
-      h.upload.toFixed(1),
-      h.ping
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `velocity_history_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportPDF = () => {
+    if (history.length > 0) {
+      exportHistoryPDF(history, chartRef.current);
+    }
   };
 
   // Sparkline data (last 10 tests, chronological)
@@ -102,12 +90,12 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                   <>
                     <button
                       className="history-btn"
-                      onClick={exportCSV}
-                      title="Export CSV"
-                      aria-label="Export history to CSV"
+                      onClick={handleExportPDF}
+                      title="Export PDF"
+                      aria-label="Export history to PDF"
                     >
                       <Download size={13} aria-hidden="true" />
-                      Export
+                      Export PDF
                     </button>
                     <button
                       className="history-btn"
@@ -134,7 +122,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
 
             {/* Sparkline chart of history */}
             {history.length >= 2 && (
-              <div className="history-trend-panel">
+              <div className="history-trend-panel" ref={chartRef}>
                 <span className="history-trend-title">Download & Upload Speed Trends</span>
                 <div className="history-trend-chart">
                   <ResponsiveContainer width="100%" height="100%">
@@ -178,6 +166,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                     <span className="hcol-label">Download</span>
                     <span className="hcol-label">Upload</span>
                     <span className="hcol-label">Ping</span>
+                    <span className="hcol-label" style={{width: 24}}></span>
                   </div>
 
                   {history.map((row, i) => {
@@ -185,8 +174,10 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                     return (
                       <div
                         key={row.date + i}
-                        className="history-row"
-                        aria-label={`${day} ${time} — Download ${fmt(row.download)} Mbps, Upload ${fmt(row.upload)} Mbps, Ping ${row.ping} ms`}
+                        className="history-row clickable-row"
+                        onClick={() => setSelectedReport(row)}
+                        title="Click to view Expert Report"
+                        aria-label={`View expert report for ${day} ${time}`}
                       >
                         <div className="h-date">
                           {day}
@@ -196,6 +187,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                         <div className="h-val dl">{fmt(row.download)}</div>
                         <div className="h-val ul">{fmt(row.upload)}</div>
                         <div className="h-val ping">{row.ping}ms</div>
+                        <div className="h-val h-icon"><ChevronRight size={14} opacity={0.5} /></div>
                       </div>
                     );
                   })}
@@ -203,6 +195,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
               )}
             </div>
           </motion.div>
+          <ExpertReportModal report={selectedReport} onClose={() => setSelectedReport(null)} />
         </motion.div>
       )}
     </AnimatePresence>

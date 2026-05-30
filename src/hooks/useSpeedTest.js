@@ -136,6 +136,16 @@ const useSpeedTest = () => {
     metricsRef.current = metrics;
   }, [metrics]);
 
+  const dlDataRef = useRef(dlData);
+  useEffect(() => {
+    dlDataRef.current = dlData;
+  }, [dlData]);
+
+  const ulDataRef = useRef(ulData);
+  useEffect(() => {
+    ulDataRef.current = ulData;
+  }, [ulData]);
+
   // Stable ref for networkInfo so upload-complete closure doesn't go stale.
   const networkInfoRef = useRef('Unknown');
   /** @param {string} provider */
@@ -215,14 +225,24 @@ const useSpeedTest = () => {
 
         // 3. Append to history exactly once (this block runs exactly once as it is outside the state updater callback)
         setHistory((h) => {
+          const currentDlData = dlDataRef.current || [];
+          const currentUlData = ulDataRef.current || [];
+          // Include current ulData plus the final data point since ulData state might not have updated yet
+          const finalUlData = [...currentUlData, { time: Date.now() - t0, speed }];
           const entry = {
             date:     new Date().toISOString(),
             download: latestMetrics.download,
             upload:   speed,
             ping:     latestMetrics.ping,
+            jitter:   latestMetrics.jitter,
+            loadedPing: loadedPing || latestMetrics.loadedPing,
+            dlStability: calcStability(currentDlData),
+            ulStability: calcStability(finalUlData),
+            dlData:   currentDlData,
+            ulData:   finalUlData,
             provider: networkInfoRef.current,
           };
-          const next = [entry, ...h].slice(0, LIMITS.MAX_HISTORY);
+          const next = [entry, ...h].slice(0, 30); // Cap history at 30 to avoid localStorage bloat
           saveHistory(next);
           return next;
         });
