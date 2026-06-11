@@ -4,8 +4,6 @@
  */
 
 import { memo, useMemo } from 'react';
-// eslint-disable-next-line no-unused-vars
-import { motion } from 'framer-motion';
 import { Gamepad2, Tv, Globe } from 'lucide-react';
 import { SCORE, SCORE_BANDS } from '../constants.js';
 
@@ -84,17 +82,19 @@ const ScoreCard = memo(({ score, metrics }) => {
         <div className="score-dial" aria-hidden="true">
           <svg viewBox="0 0 68 68" width="68" height="68">
             <circle cx="34" cy="34" r={r} fill="none" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="4.5" />
-            <motion.circle
+            <circle
               cx="34" cy="34" r={r}
               fill="none"
               stroke={rating.color}
               strokeWidth="4.5"
               strokeLinecap="round"
               strokeDasharray={circ}
-              initial={{ strokeDashoffset: circ }}
-              animate={{ strokeDashoffset: offset }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-              style={{ transformOrigin: '34px 34px', rotate: '-90deg' }}
+              style={{
+                strokeDashoffset: offset,
+                transformOrigin: '34px 34px',
+                rotate: '-90deg',
+                transition: 'stroke-dashoffset 0.8s ease-out'
+              }}
             />
           </svg>
           <div className="score-dial-num">{score}</div>

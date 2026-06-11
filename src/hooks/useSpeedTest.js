@@ -6,7 +6,7 @@
  * No business logic should live in App.jsx.
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useReducer, useCallback, useEffect, useRef, useMemo } from 'react';
 import { startSpeedTest, stopSpeedTest } from '../utils/speedTest.js';
 import { STATUS, LIMITS, STORAGE, SCORE_BANDS } from '../constants.js';
 
@@ -120,146 +120,165 @@ const saveHistory = (history) => {
  * @property {() => void} clearHistory
  */
 
+const initialState = {
+  status: STATUS.IDLE,
+  metrics: emptyMetrics(),
+  displaySpeed: 0,
+  gaugeMax: LIMITS.GAUGE_INITIAL_MAX,
+  dlData: [],
+  ulData: [],
+  history: loadHistory(),
+};
+
+const updateSpeedState = (state, speed) => {
+  let { gaugeMax } = state;
+  if (speed > gaugeMax * LIMITS.GAUGE_SCALE_UP) {
+    const requiredMax = speed / LIMITS.GAUGE_SCALE_UP;
+    const GAUGE_STEPS = [100, 150, 250, 500, 1000, 2000, 5000];
+    let stepMax = GAUGE_STEPS.find((step) => step >= requiredMax);
+    if (!stepMax) {
+      let fallbackMax = GAUGE_STEPS[GAUGE_STEPS.length - 1];
+      while (speed > fallbackMax * LIMITS.GAUGE_SCALE_UP) {
+        fallbackMax *= 2;
+      }
+      stepMax = fallbackMax;
+    }
+    gaugeMax = stepMax;
+  }
+  return { displaySpeed: speed, gaugeMax };
+};
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case 'START':
+      return {
+        ...state,
+        status: STATUS.PINGING,
+        displaySpeed: 0,
+        gaugeMax: LIMITS.GAUGE_INITIAL_MAX,
+        metrics: emptyMetrics(),
+        dlData: [],
+        ulData: [],
+      };
+    case 'SET_STATUS':
+      return { ...state, status: action.payload };
+    case 'PING_RESULT': {
+      const { ping, jitter } = action.payload;
+      return {
+        ...state,
+        metrics: { ...state.metrics, ping, jitter },
+        ...updateSpeedState(state, ping),
+      };
+    }
+    case 'DL_PROGRESS': {
+      const { speed, time } = action.payload;
+      return {
+        ...state,
+        metrics: { ...state.metrics, download: speed },
+        dlData: [...state.dlData, { time, speed }],
+        ...updateSpeedState(state, speed),
+      };
+    }
+    case 'DL_COMPLETE': {
+      const { speed, loadedPing } = action.payload;
+      return {
+        ...state,
+        metrics: { ...state.metrics, download: speed, loadedPing: loadedPing || state.metrics.loadedPing },
+        ...updateSpeedState(state, speed),
+      };
+    }
+    case 'UL_PROGRESS': {
+      const { speed, time } = action.payload;
+      return {
+        ...state,
+        metrics: { ...state.metrics, upload: speed },
+        ulData: [...state.ulData, { time, speed }],
+        ...updateSpeedState(state, speed),
+      };
+    }
+    case 'UL_COMPLETE': {
+      const { speed, loadedPing, historyEntry } = action.payload;
+      const newHistory = [historyEntry, ...state.history].slice(0, 30);
+      saveHistory(newHistory);
+      return {
+        ...state,
+        metrics: { ...state.metrics, upload: speed, loadedPing: loadedPing || state.metrics.loadedPing },
+        history: newHistory,
+        ...updateSpeedState(state, speed),
+      };
+    }
+    case 'CLEAR_HISTORY':
+      saveHistory([]);
+      return { ...state, history: [] };
+    case 'STOP':
+      return { ...state, status: STATUS.IDLE };
+    default:
+      return state;
+  }
+};
+
 /** @returns {SpeedTestHook} */
 const useSpeedTest = () => {
-  const [status,       setStatus]       = useState(STATUS.IDLE);
-  const [metrics,      setMetrics]      = useState(emptyMetrics);
-  const [displaySpeed, setDisplaySpeed] = useState(0);
-  const [gaugeMax,     setGaugeMax]     = useState(LIMITS.GAUGE_INITIAL_MAX);
-  const [dlData,       setDlData]       = useState([]);
-  const [ulData,       setUlData]       = useState([]);
-  const [history,      setHistory]      = useState(loadHistory);
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const { status, metrics, displaySpeed, gaugeMax, dlData, ulData, history } = state;
 
-  // Maintain reference to latest metrics state to avoid stale closure during upload callback
-  const metricsRef = useRef(metrics);
+  const stateRef = useRef(state);
   useEffect(() => {
-    metricsRef.current = metrics;
-  }, [metrics]);
+    stateRef.current = state;
+  }, [state]);
 
-  const dlDataRef = useRef(dlData);
-  useEffect(() => {
-    dlDataRef.current = dlData;
-  }, [dlData]);
-
-  const ulDataRef = useRef(ulData);
-  useEffect(() => {
-    ulDataRef.current = ulData;
-  }, [ulData]);
-
-  // Stable ref for networkInfo so upload-complete closure doesn't go stale.
   const networkInfoRef = useRef('Unknown');
-  /** @param {string} provider */
   const setProvider = useCallback((p) => { networkInfoRef.current = p; }, []);
 
-  // Update speed and scale gauge max synchronously to avoid setState in effect
-  const updateSpeed = useCallback((speed) => {
-    setDisplaySpeed(speed);
-    setGaugeMax((currentMax) => {
-      if (speed > currentMax * LIMITS.GAUGE_SCALE_UP) {
-        const requiredMax = speed / LIMITS.GAUGE_SCALE_UP;
-        const GAUGE_STEPS = [100, 150, 250, 500, 1000, 2000, 5000];
-        const stepMax = GAUGE_STEPS.find((step) => step >= requiredMax);
-        if (stepMax) return stepMax;
-
-        // Fallback: double the largest step size if it exceeds 5000 Mbps
-        let fallbackMax = GAUGE_STEPS[GAUGE_STEPS.length - 1];
-        while (speed > fallbackMax * LIMITS.GAUGE_SCALE_UP) {
-          fallbackMax *= 2;
-        }
-        return fallbackMax;
-      }
-      return currentMax;
-    });
-  }, []);
-
-  // Cleanup worker on unmount
   useEffect(() => () => stopSpeedTest(), []);
 
   const runTest = useCallback(() => {
-    if (status !== STATUS.IDLE && status !== STATUS.FINISHED) return;
+    if (stateRef.current.status !== STATUS.IDLE && stateRef.current.status !== STATUS.FINISHED) return;
 
     const t0 = Date.now();
-
-    setStatus(STATUS.PINGING);
-    setDisplaySpeed(0);
-    setGaugeMax(LIMITS.GAUGE_INITIAL_MAX);
-    setMetrics(emptyMetrics());
-    setDlData([]);
-    setUlData([]);
+    dispatch({ type: 'START' });
 
     startSpeedTest({
-      onStatus: setStatus,
-
-      onPing: (ping, jitter) => {
-        setMetrics((p) => ({ ...p, ping, jitter }));
-        updateSpeed(ping);
-      },
-
-      onDownloadProgress: (speed) => {
-        updateSpeed(speed);
-        setMetrics((p) => ({ ...p, download: speed }));
-        setDlData((p) => [...p, { time: Date.now() - t0, speed }]);
-      },
-
-      onDownloadComplete: (speed, loadedPing) => {
-        updateSpeed(speed);
-        setMetrics((p) => ({ ...p, download: speed, loadedPing: loadedPing || p.loadedPing }));
-      },
-
-      onUploadProgress: (speed) => {
-        updateSpeed(speed);
-        setMetrics((p) => ({ ...p, upload: speed }));
-        setUlData((p) => [...p, { time: Date.now() - t0, speed }]);
-      },
-
+      onStatus: (st) => dispatch({ type: 'SET_STATUS', payload: st }),
+      onPing: (ping, jitter) => dispatch({ type: 'PING_RESULT', payload: { ping, jitter } }),
+      onDownloadProgress: (speed) => dispatch({ type: 'DL_PROGRESS', payload: { speed, time: Date.now() - t0 } }),
+      onDownloadComplete: (speed, loadedPing) => dispatch({ type: 'DL_COMPLETE', payload: { speed, loadedPing } }),
+      onUploadProgress: (speed) => dispatch({ type: 'UL_PROGRESS', payload: { speed, time: Date.now() - t0 } }),
       onUploadComplete: (speed, loadedPing) => {
-        // 1. Update the metrics state with final upload speeds
-        setMetrics((prev) => ({
-          ...prev,
-          upload:     speed,
-          loadedPing: loadedPing || prev.loadedPing,
-        }));
-
-        // 2. Obtain the latest completed metrics via the ref to avoid stale closures
-        const latestMetrics = metricsRef.current;
-
-        // 3. Append to history exactly once (this block runs exactly once as it is outside the state updater callback)
-        setHistory((h) => {
-          const currentDlData = dlDataRef.current || [];
-          const currentUlData = ulDataRef.current || [];
-          // Include current ulData plus the final data point since ulData state might not have updated yet
-          const finalUlData = [...currentUlData, { time: Date.now() - t0, speed }];
-          const entry = {
-            date:     new Date().toISOString(),
-            download: latestMetrics.download,
-            upload:   speed,
-            ping:     latestMetrics.ping,
-            jitter:   latestMetrics.jitter,
-            loadedPing: loadedPing || latestMetrics.loadedPing,
-            dlStability: calcStability(currentDlData),
-            ulStability: calcStability(finalUlData),
-            dlData:   currentDlData,
-            ulData:   finalUlData,
-            provider: networkInfoRef.current,
-          };
-          const next = [entry, ...h].slice(0, 30); // Cap history at 30 to avoid localStorage bloat
-          saveHistory(next);
-          return next;
-        });
-
-        updateSpeed(speed);
+        const currentDlData = stateRef.current.dlData || [];
+        const currentUlData = stateRef.current.ulData || [];
+        const finalUlData = [...currentUlData, { time: Date.now() - t0, speed }];
+        const latestMetrics = stateRef.current.metrics;
+        
+        const historyEntry = {
+          date: new Date().toISOString(),
+          download: latestMetrics.download,
+          upload: speed,
+          ping: latestMetrics.ping,
+          jitter: latestMetrics.jitter,
+          loadedPing: loadedPing || latestMetrics.loadedPing,
+          dlStability: calcStability(currentDlData),
+          ulStability: calcStability(finalUlData),
+          dlData: currentDlData,
+          ulData: finalUlData,
+          provider: networkInfoRef.current,
+        };
+        dispatch({ type: 'UL_COMPLETE', payload: { speed, loadedPing, historyEntry } });
       },
-
       onError: (err) => {
         if (import.meta.env.DEV) console.error('[SpeedTest]', err);
-        setStatus(STATUS.IDLE);
+        dispatch({ type: 'SET_STATUS', payload: STATUS.IDLE });
       },
     });
-  }, [status, updateSpeed]);
+  }, []);
 
   const clearHistory = useCallback(() => {
-    setHistory([]);
-    saveHistory([]);
+    dispatch({ type: 'CLEAR_HISTORY' });
+  }, []);
+
+  const stopTest = useCallback(() => {
+    stopSpeedTest();
+    dispatch({ type: 'STOP' });
   }, []);
 
   const isRunning = status !== STATUS.IDLE && status !== STATUS.FINISHED;
@@ -286,6 +305,7 @@ const useSpeedTest = () => {
     ulStability,
     setProvider,
     runTest,
+    stopTest,
     clearHistory,
   };
 };

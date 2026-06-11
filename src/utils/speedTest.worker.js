@@ -91,21 +91,73 @@ const bufferbloat = (() => {
  * @returns {Promise<{ ping: number, jitter: number }>}
  */
 const measurePing = async () => {
-  try {
-    const opts = { method: 'HEAD', cache: 'no-store' };
+  const samples = [];
+  const opts = { method: 'HEAD', cache: 'no-store' };
 
-    const t1 = performance.now();
-    await fetchWithTimeout(appendCacheBuster(ENDPOINTS.PING), opts, TIMEOUTS.PING_REQUEST);
-    const l1 = Math.round(performance.now() - t1);
+  for (let i = 0; i < 5; i++) {
+    try {
+      const t0 = performance.now();
+      await fetchWithTimeout(appendCacheBuster(ENDPOINTS.PING), opts, TIMEOUTS.PING_REQUEST);
+      samples.push(Math.round(performance.now() - t0));
+    } catch {
+      // Ignore individual transient ping error, continue
+    }
+  }
 
-    const t2 = performance.now();
-    await fetchWithTimeout(appendCacheBuster(ENDPOINTS.PING), opts, TIMEOUTS.PING_REQUEST);
-    const l2 = Math.round(performance.now() - t2);
-
-    return { ping: l1, jitter: Math.abs(l1 - l2) };
-  } catch {
+  if (samples.length === 0) {
     return { ping: 0, jitter: 0 };
   }
+
+  if (samples.length < 2) {
+    return { ping: samples[0], jitter: 0 };
+  }
+
+  const total = samples.reduce((sum, s) => sum + s, 0);
+  const avgPing = Math.round(total / samples.length);
+
+  // RFC 1889 standard deviation jitter calculation
+  let sumDiffs = 0;
+  for (let i = 1; i < samples.length; i++) {
+    sumDiffs += Math.abs(samples[i] - samples[i - 1]);
+  }
+  const avgJitter = Math.round(sumDiffs / (samples.length - 1));
+
+  return { ping: avgPing, jitter: avgJitter };
+};
+
+const calculateAggregateSpeed = (conns, now) => {
+  let earliestActualStart = null;
+  let totalWarmedUpBytes = 0;
+  let earliestTransferStart = null;
+  let totalRawBytes = 0;
+  let warmedUpCount = 0;
+
+  for (let i = 0; i < conns.length; i++) {
+    const c = conns[i];
+    if (c.transferStart !== null) {
+      if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
+        earliestTransferStart = c.transferStart;
+      }
+      totalRawBytes += c.bytesLoaded;
+    }
+    if (c.warmupDone && c.actualStart !== null) {
+      warmedUpCount++;
+      if (earliestActualStart === null || c.actualStart < earliestActualStart) {
+        earliestActualStart = c.actualStart;
+      }
+      totalWarmedUpBytes += c.actualBytes;
+    }
+  }
+
+  let speed = 0;
+  if (warmedUpCount > 0 && earliestActualStart !== null) {
+    const elapsed = Math.max((now - earliestActualStart) / 1000, 0.05);
+    speed = ((totalWarmedUpBytes * 8) / elapsed) / 1_000_000;
+  } else if (earliestTransferStart !== null) {
+    const elapsed = Math.max((now - earliestTransferStart) / 1000, 0.05);
+    speed = ((totalRawBytes * 8) / elapsed) / 1_000_000;
+  }
+  return speed;
 };
 
 // ─── Download ─────────────────────────────────────────────────────────────────
@@ -166,44 +218,7 @@ const measureDownload = async (onProgress) => {
           }
 
           if (now - lastReport >= TEST.PROGRESS_INTERVAL) {
-            let aggregateSpeed = 0;
-            let warmedUpCount = 0;
-            let earliestActualStart = null;
-            let totalWarmedUpBytes = 0;
-
-            let earliestTransferStart = null;
-            let totalRawBytes = 0;
-
-            for (let i = 0; i < TEST.CONNECTIONS; i++) {
-              const c = conns[i];
-              if (c.transferStart !== null) {
-                if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
-                  earliestTransferStart = c.transferStart;
-                }
-                totalRawBytes += c.bytesLoaded;
-              }
-
-              if (c.warmupDone && c.actualStart !== null) {
-                warmedUpCount++;
-                if (earliestActualStart === null || c.actualStart < earliestActualStart) {
-                  earliestActualStart = c.actualStart;
-                }
-                totalWarmedUpBytes += c.actualBytes;
-              }
-            }
-
-            if (warmedUpCount > 0 && earliestActualStart !== null) {
-              const elapsed = (now - earliestActualStart) / 1000;
-              if (elapsed > 0.05) {
-                aggregateSpeed = ((totalWarmedUpBytes * 8) / elapsed) / 1_000_000;
-              }
-            } else if (earliestTransferStart !== null) {
-              const elapsed = (now - earliestTransferStart) / 1000;
-              if (elapsed > 0.05) {
-                aggregateSpeed = ((totalRawBytes * 8) / elapsed) / 1_000_000;
-              }
-            }
-
+            const aggregateSpeed = calculateAggregateSpeed(conns, now);
             if (aggregateSpeed > 0) {
               onProgress(aggregateSpeed);
             }
@@ -226,38 +241,7 @@ const measureDownload = async (onProgress) => {
   abortController.abort(); // Cancel any lingering download stream reads immediately
 
   const now = performance.now();
-
-  let earliestActualStart = null;
-  let totalWarmedUpBytes = 0;
-  let earliestTransferStart = null;
-  let totalRawBytes = 0;
-  let warmedUpCount = 0;
-
-  for (let i = 0; i < TEST.CONNECTIONS; i++) {
-    const c = conns[i];
-    if (c.transferStart !== null) {
-      if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
-        earliestTransferStart = c.transferStart;
-      }
-      totalRawBytes += c.bytesLoaded;
-    }
-    if (c.warmupDone && c.actualStart !== null) {
-      warmedUpCount++;
-      if (earliestActualStart === null || c.actualStart < earliestActualStart) {
-        earliestActualStart = c.actualStart;
-      }
-      totalWarmedUpBytes += c.actualBytes;
-    }
-  }
-
-  let speed = 0;
-  if (warmedUpCount > 0 && earliestActualStart !== null) {
-    const elapsed = (now - earliestActualStart) / 1000;
-    speed = ((totalWarmedUpBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
-  } else if (earliestTransferStart !== null) {
-    const elapsed = (now - earliestTransferStart) / 1000;
-    speed = ((totalRawBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
-  }
+  const speed = calculateAggregateSpeed(conns, now);
 
   const loadedPing = bufferbloat.stop();
 
@@ -279,6 +263,9 @@ const measureUpload = async (onProgress) => {
   let lastReport = performance.now();
   const abortController = new AbortController();
 
+  // Pre-allocate a single maximum-size array to avoid garbage collection pressure during the upload test
+  const maxPayload = new Uint8Array(TEST.UPLOAD_MAX_CHUNK).fill(1);
+
   const conns = Array.from({ length: TEST.CONNECTIONS }, () => ({
     bytesLoaded: 0,
     transferStart: null,
@@ -295,7 +282,7 @@ const measureUpload = async (onProgress) => {
     
     while (!isDone && performance.now() < deadline) {
       const currentChunkSize = conn.chunkSize;
-      const payload = new Uint8Array(currentChunkSize).fill(1);
+      const payload = maxPayload.subarray(0, currentChunkSize);
       const t0 = performance.now();
 
       try {
@@ -336,44 +323,7 @@ const measureUpload = async (onProgress) => {
         }
 
         if (now - lastReport >= TEST.PROGRESS_INTERVAL) {
-          let aggregateSpeed = 0;
-          let warmedUpCount = 0;
-          let earliestActualStart = null;
-          let totalWarmedUpBytes = 0;
-
-          let earliestTransferStart = null;
-          let totalRawBytes = 0;
-
-          for (let i = 0; i < TEST.CONNECTIONS; i++) {
-            const c = conns[i];
-            if (c.transferStart !== null) {
-              if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
-                earliestTransferStart = c.transferStart;
-              }
-              totalRawBytes += c.bytesLoaded;
-            }
-
-            if (c.warmupDone && c.actualStart !== null) {
-              warmedUpCount++;
-              if (earliestActualStart === null || c.actualStart < earliestActualStart) {
-                earliestActualStart = c.actualStart;
-              }
-              totalWarmedUpBytes += c.actualBytes;
-            }
-          }
-
-          if (warmedUpCount > 0 && earliestActualStart !== null) {
-            const elapsed = (now - earliestActualStart) / 1000;
-            if (elapsed > 0.05) {
-              aggregateSpeed = ((totalWarmedUpBytes * 8) / elapsed) / 1_000_000;
-            }
-          } else if (earliestTransferStart !== null) {
-            const elapsed = (now - earliestTransferStart) / 1000;
-            if (elapsed > 0.05) {
-              aggregateSpeed = ((totalRawBytes * 8) / elapsed) / 1_000_000;
-            }
-          }
-
+          const aggregateSpeed = calculateAggregateSpeed(conns, now);
           if (aggregateSpeed > 0) {
             onProgress(aggregateSpeed);
           }
@@ -394,38 +344,7 @@ const measureUpload = async (onProgress) => {
   abortController.abort(); // Cancel any active POST fetches immediately
 
   const now = performance.now();
-
-  let earliestActualStart = null;
-  let totalWarmedUpBytes = 0;
-  let earliestTransferStart = null;
-  let totalRawBytes = 0;
-  let warmedUpCount = 0;
-
-  for (let i = 0; i < TEST.CONNECTIONS; i++) {
-    const c = conns[i];
-    if (c.transferStart !== null) {
-      if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
-        earliestTransferStart = c.transferStart;
-      }
-      totalRawBytes += c.bytesLoaded;
-    }
-    if (c.warmupDone && c.actualStart !== null) {
-      warmedUpCount++;
-      if (earliestActualStart === null || c.actualStart < earliestActualStart) {
-        earliestActualStart = c.actualStart;
-      }
-      totalWarmedUpBytes += c.actualBytes;
-    }
-  }
-
-  let speed = 0;
-  if (warmedUpCount > 0 && earliestActualStart !== null) {
-    const elapsed = (now - earliestActualStart) / 1000;
-    speed = ((totalWarmedUpBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
-  } else if (earliestTransferStart !== null) {
-    const elapsed = (now - earliestTransferStart) / 1000;
-    speed = ((totalRawBytes * 8) / Math.max(elapsed, 0.05)) / 1_000_000;
-  }
+  const speed = calculateAggregateSpeed(conns, now);
 
   const loadedPing = bufferbloat.stop();
 

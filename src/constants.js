@@ -6,33 +6,33 @@
 // ─── External endpoints ──────────────────────────────────────────────────────
 
 export const ENDPOINTS = Object.freeze({
-  PING:        'https://cloudflare.com/cdn-cgi/trace',
-  DOWNLOAD:    'https://speed.cloudflare.com/__down?bytes=50000000',
-  UPLOAD:      'https://speed.cloudflare.com/__up',
-  IP_PRIMARY:  'https://ipinfo.io/json',
+  PING: 'https://cloudflare.com/cdn-cgi/trace',
+  DOWNLOAD: 'https://speed.cloudflare.com/__down?bytes=50000000',
+  UPLOAD: 'https://speed.cloudflare.com/__up',
+  IP_PRIMARY: 'https://ipinfo.io/json',
   IP_FALLBACK: 'https://api.ipify.org?format=json',
 });
 
 // ─── Timing (ms) ─────────────────────────────────────────────────────────────
 
 export const TIMEOUTS = Object.freeze({
-  PING_REQUEST:      5_000,
-  BUFFERBLOAT_POLL:    500,
-  BUFFERBLOAT_REQ:   2_000,
-  DOWNLOAD_MAX:     15_000,
-  UPLOAD_MAX:       15_000,
-  NETWORK_INFO:      3_000,
-  PAUSE_BETWEEN:     1_000,
+  PING_REQUEST: 5_000,
+  BUFFERBLOAT_POLL: 500,
+  BUFFERBLOAT_REQ: 2_000,
+  DOWNLOAD_MAX: 10_000,
+  UPLOAD_MAX: 10_000,
+  NETWORK_INFO: 3_000,
+  PAUSE_BETWEEN: 1_000,
 });
 
 // ─── Test parameters ─────────────────────────────────────────────────────────
 
 export const TEST = Object.freeze({
-  CONNECTIONS:          4,
-  PROGRESS_INTERVAL:    100,
+  CONNECTIONS: 4,
+  PROGRESS_INTERVAL: 100,
   UPLOAD_INITIAL_CHUNK: 256 * 1024,
-  UPLOAD_MIN_CHUNK:      64 * 1024,
-  UPLOAD_MAX_CHUNK:     2 * 1024 * 1024,
+  UPLOAD_MIN_CHUNK: 64 * 1024,
+  UPLOAD_MAX_CHUNK: 2 * 1024 * 1024,
 });
 
 // ─── Gauge geometry ───────────────────────────────────────────────────────────
@@ -56,46 +56,46 @@ export const TEST = Object.freeze({
 //   top: CY / HEIGHT = 110/200 = 55 %
 //
 export const GAUGE = Object.freeze({
-  WIDTH:       280,
-  HEIGHT:      200,
-  CX:          140,
-  CY:          110,
-  RADIUS:      95,
+  WIDTH: 280,
+  HEIGHT: 200,
+  CX: 140,
+  CY: 110,
+  RADIUS: 95,
   START_ANGLE: 220,
-  SWEEP:       280,
-  TICKS:       [0, 25, 50, 75, 100],
+  SWEEP: 280,
+  TICKS: [0, 25, 50, 75, 100],
 });
 
 // ─── Application limits ───────────────────────────────────────────────────────
 
 export const LIMITS = Object.freeze({
-  MAX_HISTORY:       50,
-  GAUGE_SCALE_UP:    0.88,
-  GAUGE_SCALE_DOWN:  0.15,
+  MAX_HISTORY: 50,
+  GAUGE_SCALE_UP: 0.88,
+  GAUGE_SCALE_DOWN: 0.15,
   GAUGE_INITIAL_MAX: 100,
 });
 
 // ─── Worker message types ─────────────────────────────────────────────────────
 
 export const MSG = Object.freeze({
-  START:             'start',
-  STATUS:            'status',
-  PING_RESULT:       'pingResult',
+  START: 'start',
+  STATUS: 'status',
+  PING_RESULT: 'pingResult',
   DOWNLOAD_PROGRESS: 'downloadProgress',
   DOWNLOAD_COMPLETE: 'downloadComplete',
-  UPLOAD_PROGRESS:   'uploadProgress',
-  UPLOAD_COMPLETE:   'uploadComplete',
-  ERROR:             'error',
+  UPLOAD_PROGRESS: 'uploadProgress',
+  UPLOAD_COMPLETE: 'uploadComplete',
+  ERROR: 'error',
 });
 
 // ─── Status values ────────────────────────────────────────────────────────────
 
 export const STATUS = Object.freeze({
-  IDLE:        'idle',
-  PINGING:     'pinging',
+  IDLE: 'idle',
+  PINGING: 'pinging',
   DOWNLOADING: 'downloading',
-  UPLOADING:   'uploading',
-  FINISHED:    'finished',
+  UPLOADING: 'uploading',
+  FINISHED: 'finished',
 });
 
 // ─── Local storage keys ───────────────────────────────────────────────────────
@@ -108,12 +108,12 @@ export const STORAGE = Object.freeze({
 
 export const SCORE = Object.freeze({
   EXCELLENT: 85,
-  GOOD:      65,
-  FAIR:      45,
+  GOOD: 65,
+  FAIR: 45,
 });
 
 export const SCORE_BANDS = Object.freeze({
-  DL:   { GREAT: 100, OK: 25,  LOW: 5   },
-  UL:   { GREAT: 20,  OK: 5,   LOW: 1   },
-  PING: { GREAT: 20,  OK: 50,  LOW: 100 },
+  DL: { GREAT: 100, OK: 25, LOW: 5 },
+  UL: { GREAT: 20, OK: 5, LOW: 1 },
+  PING: { GREAT: 20, OK: 50, LOW: 100 },
 });

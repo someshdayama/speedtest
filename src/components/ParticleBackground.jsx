@@ -10,61 +10,73 @@ class Particle {
   constructor(width, height) {
     this.reset(width, height);
     // Initially randomize x positions so they don't all start from the left edge
-    this.x = Math.random() * (width + 120) - 100;
+    this.x = Math.random() * (width + 120) - 60;
   }
 
   reset(width, height) {
-    // Start off-screen to the left to let streaks slide in naturally without clipping
-    this.x = -100;
-    this.y = Math.random() * height;
+    this.x = -60;
+    this.baseY = Math.random() * height;
+    this.y = this.baseY;
     
     // Parallax depth: 0.2 (far, slow, tiny) to 1.0 (near, fast, larger)
     this.depth = Math.random() * 0.8 + 0.2;
-    
-    // Slightly more prominent star sizes: from 0.2px (deep) to 2.3px (foreground)
     this.size = (Math.random() * 1.5 + 0.8) * this.depth;
     
-    // Drift speed based on depth
-    this.baseSpeedX = (Math.random() * 0.35 + 0.2) * this.depth;
-    this.speedY = (Math.random() - 0.5) * 0.1 * this.depth;
+    this.baseSpeedX = (Math.random() * 0.4 + 0.4) * this.depth;
     
-    // Slightly more prominent alpha range: 0.2 to 0.7
-    this.alpha = (Math.random() * 0.5 + 0.2) * this.depth;
+    // Wave movement parameters (sine wave displacement)
+    this.wavePhase = Math.random() * Math.PI * 2;
+    this.waveAmplitude = (Math.random() * 10 + 5) * (1 - this.depth); // background waves drift more vertically
+    this.waveFrequency = Math.random() * 0.005 + 0.002;
+    
+    this.alpha = (Math.random() * 0.45 + 0.2) * this.depth;
   }
 
   update(currSpeed, width, height) {
-    // Defensive check: ensure speed is a valid finite number
     const validSpeed = Number.isFinite(currSpeed) && currSpeed > 0 ? currSpeed : 0;
-    
-    // Speed multiplier curves up faster (division by 3.5 instead of 6) and caps higher (60x instead of 45x)
-    const speedMultiplier = 1 + Math.min(validSpeed / 3.5, 60) * this.depth;
+    const speedMultiplier = 1 + Math.min(validSpeed / 2.0, 90) * this.depth;
     this.x += this.baseSpeedX * speedMultiplier;
-    this.y += this.speedY;
+    
+    // Soft sinusoidal wave displacement
+    this.y = this.baseY + Math.sin(this.x * this.waveFrequency + this.wavePhase) * this.waveAmplitude;
 
-    if (this.x > width) {
+    if (this.x > width + 60) {
       this.reset(width, height);
     }
   }
 
-  draw(ctx, currSpeed, color) {
+  draw(ctx, currSpeed, color, width, height) {
+    // Boundary checks
+    if (this.x < -100 || this.x > width + 100 || this.y < -100 || this.y > height + 100) {
+      return;
+    }
+
     ctx.save();
-    ctx.globalAlpha = this.alpha;
+    
+    // Boundary edge fade-in / fade-out to prevent sudden popping
+    let edgeAlpha = 1;
+    if (this.x < 100) {
+      edgeAlpha = this.x / 100;
+    } else if (this.x > width - 100) {
+      edgeAlpha = (width - this.x) / 100;
+    }
+    edgeAlpha = Math.max(0, Math.min(1, edgeAlpha));
+    
+    ctx.globalAlpha = this.alpha * edgeAlpha;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = this.size;
 
-    // Stretch particles into thin glowing vector streaks as speed increases
     const validSpeed = Number.isFinite(currSpeed) && currSpeed > 0 ? currSpeed : 0;
-    const speedFactor = Math.min(validSpeed / 3.5, 60);
-    
+    const speedFactor = Math.min(validSpeed / 2.0, 90);
+
     if (speedFactor > 1.5) {
-      const length = Math.min(speedFactor * 1.8 * this.depth, 80);
+      const length = Math.min(speedFactor * 2.2 * this.depth, 160);
       ctx.beginPath();
       ctx.moveTo(this.x, this.y);
       ctx.lineTo(this.x - length, this.y);
       ctx.stroke();
     } else {
-      // Circular micro-particles at rest/low speed
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       ctx.fill();
@@ -76,17 +88,30 @@ class Particle {
 /**
  * @param {{ speed: number, status: string }} props
  */
-const ParticleBackground = memo(({ speed, status }) => {
+const ParticleBackground = memo(({ status }) => {
   const canvasRef = useRef(null);
   
-  // Track speed and status using refs to prevent animation loops from tearing down
-  const speedRef = useRef(speed);
+  const speedRef = useRef(0);
   const statusRef = useRef(status);
+  const wakeUpRef = useRef(null);
 
   useEffect(() => {
-    speedRef.current = speed;
     statusRef.current = status;
-  }, [speed, status]);
+    if (wakeUpRef.current) {
+      wakeUpRef.current();
+    }
+  }, [status]);
+
+  useEffect(() => {
+    const handleSpeed = (e) => {
+      speedRef.current = e.detail;
+      if (wakeUpRef.current) {
+        wakeUpRef.current();
+      }
+    };
+    window.addEventListener('speed-update', handleSpeed);
+    return () => window.removeEventListener('speed-update', handleSpeed);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -95,26 +120,59 @@ const ParticleBackground = memo(({ speed, status }) => {
     if (!ctx) return;
 
     let animationId;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let lastActiveTime = Date.now();
+    let isSuspended = false;
+
+    const resizeCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    resizeCanvas();
 
     const handleResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+      resizeCanvas();
     };
     window.addEventListener('resize', handleResize, { passive: true });
+
+    const wakeUp = () => {
+      lastActiveTime = Date.now();
+      if (isSuspended) {
+        isSuspended = false;
+        animationId = requestAnimationFrame(tick);
+      }
+    };
+    wakeUpRef.current = wakeUp;
+
+    window.addEventListener('mousemove', wakeUp, { passive: true });
+    window.addEventListener('touchstart', wakeUp, { passive: true });
 
     // 100 particles gives a rich but highly-optimized starry cosmos
     const particleCount = 100;
     const particles = Array.from({ length: particleCount }, () => new Particle(width, height));
 
     const tick = () => {
+      const currentStatus = statusRef.current;
+      const isRunning = currentStatus === 'pinging' || currentStatus === 'downloading' || currentStatus === 'uploading';
+      
+      if (isRunning) {
+        lastActiveTime = Date.now();
+      } else if (Date.now() - lastActiveTime > 5000) {
+        isSuspended = true;
+        ctx.clearRect(0, 0, width, height);
+        return;
+      }
+
       ctx.clearRect(0, 0, width, height);
 
-      const currentStatus = statusRef.current;
-      
-      // Speed test is running only during pinging, downloading, or uploading phases
-      const isRunning = currentStatus === 'pinging' || currentStatus === 'downloading' || currentStatus === 'uploading';
       const currentSpeed = isRunning ? speedRef.current : 0;
 
       // Map color profiles (solid colors, opacity is controlled entirely by particle alpha)
@@ -131,7 +189,7 @@ const ParticleBackground = memo(({ speed, status }) => {
 
       for (let i = 0; i < particles.length; i++) {
         particles[i].update(currentSpeed, width, height);
-        particles[i].draw(ctx, currentSpeed, color);
+        particles[i].draw(ctx, currentSpeed, color, width, height);
       }
 
       animationId = requestAnimationFrame(tick);
@@ -142,6 +200,9 @@ const ParticleBackground = memo(({ speed, status }) => {
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('mousemove', wakeUp);
+      window.removeEventListener('touchstart', wakeUp);
+      wakeUpRef.current = null;
     };
   }, []);
 

@@ -1,73 +1,46 @@
-/**
- * @file SpeedChart.jsx
- * Real-time area chart for download / upload speed over time.
- * Memoized — only re-renders when `data` or `type` changes.
- */
-
 import { memo } from 'react';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
 
-const TOOLTIP_STYLE = {
-  background:   '#111114',
-  border:       '1px solid #222228',
-  borderRadius: '6px',
-  padding:      '4px 10px',
-  fontSize:     '0.72rem',
-  color:        '#f2f2f4',
-};
-
-/** @param {number} v */
 const formatValue = (v) => `${typeof v === 'number' ? v.toFixed(1) : '--'} Mbps`;
 
-/**
- * @param {{ data: Array<{time:number,speed:number}>, type: 'download'|'upload' }} props
- */
 const SpeedChart = memo(({ data, type }) => {
   if (!data || data.length < 2) return null;
 
   const color = type === 'upload' ? 'var(--green)' : 'var(--accent)';
   const gradId = `grad-${type}`;
 
+  const width = 1000; // Use a large internal resolution for smoothness
+  const height = 100;
+  
+  const maxSpeed = Math.max(1, ...data.map(d => d.speed));
+  
+  const getX = (index) => (index / (data.length - 1)) * width;
+  const getY = (val) => height - (val / maxSpeed) * height;
+
+  const points = data.map((d, i) => `${getX(i)},${getY(d.speed)}`).join(' ');
+  const areaPoints = `0,${height} ${points} ${width},${height}`;
+
   return (
-    <div style={{ width: '100%', height: 72 }}>
-      <ResponsiveContainer>
-        <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor={color} stopOpacity={0.15} />
-              <stop offset="100%" stopColor={color} stopOpacity={0}    />
-            </linearGradient>
-          </defs>
-
-          <XAxis dataKey="time" hide />
-          <YAxis   hide domain={['auto', 'auto']} />
-
-          <Tooltip
-            contentStyle={TOOLTIP_STYLE}
-            itemStyle={{ color }}
-            labelStyle={{ display: 'none' }}
-            formatter={formatValue}
-          />
-
-          <Area
-            type="monotone"
-            dataKey="speed"
-            stroke={color}
-            strokeWidth={1.5}
-            fill={`url(#${gradId})`}
-            isAnimationActive={false}
-            dot={false}
-            activeDot={{ r: 3, strokeWidth: 0 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div style={{ width: '100%', height: 72, position: 'relative' }}>
+      <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.15} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        
+        <polygon points={areaPoints} fill={`url(#${gradId})`} />
+        
+        <polyline
+          points={points}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      </svg>
     </div>
   );
 });

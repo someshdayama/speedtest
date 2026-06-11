@@ -4,10 +4,8 @@
  */
 
 import { memo, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Download, Upload, Activity, AlertTriangle, ShieldCheck, Clock, Server } from 'lucide-react';
 import SpeedChart from './SpeedChart.jsx';
-import { exportSingleTestPDF } from '../utils/pdfExport.js';
 
 /** @param {number} n */
 const fmt = (n) => (typeof n === 'number' && n > 0 ? n.toFixed(1) : '--');
@@ -30,15 +28,67 @@ const StatBox = ({ label, value, unit, icon: Icon, colorClass }) => (
 const ExpertReportModal = memo(({ report, onClose }) => {
   const dlChartRef = useRef(null);
   const ulChartRef = useRef(null);
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Escape') onClose();
-  }, [onClose]);
+  const modalRef = useRef(null);
 
   useEffect(() => {
     if (!report) return;
+
+    const previousActiveElement = document.activeElement;
+
+    if (modalRef.current) {
+      const focusable = modalRef.current.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length > 0) {
+        const autoFocused = Array.from(focusable).find(el => el.hasAttribute('autoFocus'));
+        if (autoFocused) {
+          autoFocused.focus();
+        } else {
+          focusable[0].focus();
+        }
+      }
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusable = Array.from(
+          modalRef.current.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        );
+
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            last.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === last) {
+            first.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [report, handleKeyDown]);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousActiveElement && typeof previousActiveElement.focus === 'function') {
+        previousActiveElement.focus();
+      }
+    };
+  }, [report, onClose]);
 
   if (!report) return null;
 
@@ -47,26 +97,19 @@ const ExpertReportModal = memo(({ report, onClose }) => {
   const timeStr = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
-    <AnimatePresence>
-      {report && (
-        <motion.div
-          className="modal-backdrop expert-backdrop"
+    <>
+      {!!report && (
+        <div
+          className="modal-backdrop expert-backdrop fade-in"
           role="presentation"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
           onClick={onClose}
         >
-          <motion.div
-            className="modal expert-modal"
+          <div
+            ref={modalRef}
+            className="modal expert-modal print-modal fade-in-up"
             role="dialog"
             aria-modal="true"
             aria-labelledby="er-title"
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.25, type: 'spring', damping: 25 }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -78,8 +121,8 @@ const ExpertReportModal = memo(({ report, onClose }) => {
               <div className="header-actions">
                 <button
                   className="history-btn"
-                  onClick={() => exportSingleTestPDF(report, dlChartRef.current, ulChartRef.current)}
-                  title="Download PDF Certificate"
+                  onClick={() => window.print()}
+                  title="Print / Save PDF"
                 >
                   <Download size={13} />
                   PDF
@@ -151,10 +194,10 @@ const ExpertReportModal = memo(({ report, onClose }) => {
               )}
               
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 });
 

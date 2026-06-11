@@ -145,7 +145,7 @@ const useNetworkInfo = () => {
         });
         if (res.ok) {
           const data = await res.json();
-          result.provider = safe((data.org ?? data.asn ?? '').replace(/^AS\d+\s*/, ''))
+          result.provider = safe(String(data.org ?? data.asn ?? '').replace(/^AS\d+\s*/, ''))
             || 'ISP Detected';
         }
       } catch {

@@ -242,3 +242,51 @@ body {
   display: flex;
   justify-content: flex-end;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-modal, .print-modal * {
+    visibility: visible;
+  }
+  .print-modal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none;
+    box-shadow: none;
+    background: white;
+    color: black;
+  }
+  .modal-backdrop {
+    background: none;
+  }
+  .header-actions {
+    display: none;
+  }
+  .modal-close, .history-btn {
+    display: none;
+  }
+}
+
+
+.fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.fade-in-delayed {
+  animation: fade-in 0.3s ease-out 0.06s forwards;
+  opacity: 0;
+}
+
+.fade-in-up {
+  animation: fade-in-up 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(15px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+

@@ -13,6 +13,7 @@
  */
 
 import { MSG } from '../constants.js';
+import SpeedTestWorker from './speedTest.worker.js?worker&inline';
 
 /** @type {Worker | null} */
 let activeWorker = null;
@@ -36,10 +37,7 @@ export const startSpeedTest = (callbacks) => {
   // Terminate any previous worker before creating a new one.
   stopSpeedTest();
 
-  activeWorker = new Worker(
-    new URL('./speedTest.worker.js', import.meta.url),
-    { type: 'module' },
-  );
+  activeWorker = new SpeedTestWorker();
 
   activeWorker.onmessage = ({ data }) => {
     // Validate type field before dispatching — ignore unknown messages.

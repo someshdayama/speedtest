@@ -24,17 +24,11 @@ export default defineConfig({
   ],
 
   build: {
-    // Slightly higher warning threshold — recharts is legitimately large.
-    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: {
           // Core React runtime — changes least often, cache longest.
           vendor: ['react', 'react-dom'],
-          // Animation library — isolate from chart lib for better caching.
-          motion: ['framer-motion'],
-          // Recharts is large; own chunk so it doesn't pollute vendor.
-          charts: ['recharts'],
         },
       },
     },

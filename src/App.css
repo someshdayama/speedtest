@@ -392,34 +392,36 @@
   font-family: var(--font-heading);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-1);
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #000000;
+  background: #ffffff;
+  border: 1px solid #ffffff;
   border-radius: var(--r-md);
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
 }
 
-.action-button:hover:not(:disabled) {
+.action-button:hover {
   transform: translateY(-2px);
-  background: #ffffff;
-  color: #000000;
-  border-color: #ffffff;
-  box-shadow: 0 8px 24px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(255, 255, 255, 0.25);
 }
 
-.action-button:active:not(:disabled) {
+.action-button:active {
   transform: translateY(0);
   opacity: 0.85;
 }
 
-.action-button:disabled {
-  cursor: not-allowed;
-  background: rgba(255, 255, 255, 0.01);
-  color: var(--text-3);
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  box-shadow: none;
-  animation: breathing-glow 2s ease-in-out infinite;
+.action-button.is-stopping {
+  background: rgba(248, 113, 113, 0.04);
+  color: var(--red);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+}
+
+.action-button.is-stopping:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.5);
+  box-shadow: 0 8px 24px rgba(248, 113, 113, 0.15);
 }
 
 /* ---------- Right Column ---------- */
@@ -851,7 +853,7 @@
 
 .history-cols {
   display: grid;
-  grid-template-columns: 1.8fr repeat(3, 1fr);
+  grid-template-columns: 1.8fr 1fr 1fr 1fr 24px;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.2rem;
@@ -870,7 +872,7 @@
 
 .history-row {
   display: grid;
-  grid-template-columns: 1.8fr repeat(3, 1fr);
+  grid-template-columns: 1.8fr 1fr 1fr 1fr 24px;
   gap: 0.5rem;
   align-items: center;
   padding: 0.75rem 0.75rem;
@@ -918,7 +920,7 @@
 
   .history-cols,
   .history-row {
-    grid-template-columns: 1.4fr repeat(3, 1fr);
+    grid-template-columns: 1.4fr 1fr 1fr 1fr 20px;
   }
 
   .h-date { font-size: 0.68rem; }

@@ -9,11 +9,9 @@
  */
 
 import { memo, useEffect, useCallback, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { History, Activity, Trash2, Download, ChevronRight } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
+import Sparkline from './Sparkline.jsx';
 import ExpertReportModal from './ExpertReportModal.jsx';
-import { exportHistoryPDF } from '../utils/pdfExport.js';
 
 /**
  * @param {{ date: string }} row
@@ -35,20 +33,71 @@ const fmt = (n) => (typeof n === 'number' && n > 0 ? n.toFixed(1) : '--');
 const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
   const [selectedReport, setSelectedReport] = useState(null);
   const chartRef = useRef(null);
-  // Close on Escape key
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Escape') onClose();
-  }, [onClose]);
+  const modalRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
+
+    const previousActiveElement = document.activeElement;
+
+    if (modalRef.current) {
+      const focusable = modalRef.current.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length > 0) {
+        const autoFocused = Array.from(focusable).find(el => el.hasAttribute('autoFocus'));
+        if (autoFocused) {
+          autoFocused.focus();
+        } else {
+          focusable[0].focus();
+        }
+      }
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusable = Array.from(
+          modalRef.current.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        );
+
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            last.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === last) {
+            first.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, handleKeyDown]);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousActiveElement && typeof previousActiveElement.focus === 'function') {
+        previousActiveElement.focus();
+      }
+    };
+  }, [open, onClose]);
 
   const handleExportPDF = () => {
     if (history.length > 0) {
-      exportHistoryPDF(history, chartRef.current);
+      window.print();
     }
   };
 
@@ -56,26 +105,19 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
   const sparkData = [...history].reverse().slice(-10);
 
   return (
-    <AnimatePresence>
+    <>
       {open && (
-        <motion.div
-          className="modal-backdrop"
+        <div
+          className="modal-backdrop fade-in"
           role="presentation"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
           onClick={onClose}
         >
-          <motion.div
-            className="modal"
+          <div
+            ref={modalRef}
+            className="modal print-modal fade-in-up"
             role="dialog"
             aria-modal="true"
             aria-labelledby="history-title"
-            initial={{ opacity: 0, y: 10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            transition={{ duration: 0.18 }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -125,29 +167,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
               <div className="history-trend-panel" ref={chartRef}>
                 <span className="history-trend-title">Download & Upload Speed Trends</span>
                 <div className="history-trend-chart">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={sparkData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                      <YAxis hide domain={['auto', 'auto']} />
-                      <Line
-                        type="monotone"
-                        dataKey="download"
-                        stroke="var(--accent)"
-                        strokeWidth={2}
-                        dot={{ r: 2, strokeWidth: 0, fill: "var(--accent)" }}
-                        activeDot={{ r: 4 }}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="upload"
-                        stroke="var(--green)"
-                        strokeWidth={2}
-                        dot={{ r: 2, strokeWidth: 0, fill: "var(--green)" }}
-                        activeDot={{ r: 4 }}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <Sparkline data={sparkData} />
                 </div>
               </div>
             )}
@@ -194,11 +214,11 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                 </>
               )}
             </div>
-          </motion.div>
+          </div>
           <ExpertReportModal report={selectedReport} onClose={() => setSelectedReport(null)} />
-        </motion.div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 });
 

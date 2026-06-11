@@ -3,18 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from './App';
 import * as speedTestUtils from './utils/speedTest';
 
-// Mock recharts because ResponsiveContainer needs specific width/height environments
-vi.mock('recharts', async () => {
-  const OriginalRechartsModule = await vi.importActual('recharts');
-  return {
-    ...OriginalRechartsModule,
-    ResponsiveContainer: ({ children }) => (
-      <OriginalRechartsModule.ResponsiveContainer width={800} height={800}>
-        {children}
-      </OriginalRechartsModule.ResponsiveContainer>
-    )
-  };
-});
 
 vi.mock('./utils/speedTest', () => ({
     startSpeedTest: vi.fn(),

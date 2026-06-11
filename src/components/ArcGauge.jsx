@@ -5,8 +5,7 @@
  */
 
 import { memo } from 'react';
-// eslint-disable-next-line no-unused-vars
-import { motion } from 'framer-motion';
+
 import { GAUGE } from '../constants.js';
 
 const { WIDTH, HEIGHT, CX, CY, RADIUS, START_ANGLE, SWEEP, TICKS } = GAUGE;
@@ -126,30 +125,26 @@ const ArcGauge = memo(({ percent, phase, max = 100 }) => {
       />
 
       {/* 4. Active Fill (Progress Arc) */}
-      <motion.path
+      <path
         d={arcPath(TRACK_START, fillEndClamped, RADIUS)}
         fill="none"
         stroke={strokeColor}
         strokeWidth="4"
         strokeLinecap="round"
-        initial={false}
-        animate={{ opacity: clamped > 0 ? 1 : 0.2 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+        style={{ opacity: clamped > 0 ? 1 : 0.2, transition: 'opacity 0.2s ease-out' }}
       />
 
       {/* 5. Glowing Radar Needle Line */}
       {clamped > 0 && (
-        <motion.line
+        <line
           x1={needleStart.x}
           y1={needleStart.y}
           x2={needleEnd.x}
           y2={needleEnd.y}
           stroke={activeColor}
           strokeWidth="1"
-          opacity="0.2"
           strokeDasharray="2 3"
-          initial={false}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
+          style={{ opacity: 0.2, transition: 'opacity 0.2s ease-out' }}
         />
       )}
 
@@ -157,19 +152,17 @@ const ArcGauge = memo(({ percent, phase, max = 100 }) => {
       {clamped > 0 && (
         <g>
           {/* Subtle Outer Glowing Ring */}
-          <motion.circle
+          <circle
             cx={tipPos.x}
             cy={tipPos.y}
             r="7"
             fill="none"
             stroke={activeColor}
             strokeWidth="1"
-            opacity="0.3"
-            initial={false}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            style={{ opacity: 0.3, transition: 'opacity 0.2s ease-out' }}
           />
           {/* Solid White Core Dot */}
-          <motion.circle
+          <circle
             cx={tipPos.x}
             cy={tipPos.y}
             r="3"
@@ -177,8 +170,7 @@ const ArcGauge = memo(({ percent, phase, max = 100 }) => {
             stroke={activeColor}
             strokeWidth="2"
             filter="url(#gauge-glow)"
-            initial={false}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            style={{ transition: 'opacity 0.2s ease-out' }}
           />
         </g>
       )}

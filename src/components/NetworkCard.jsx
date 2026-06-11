@@ -5,8 +5,6 @@
  */
 
 import { useState, memo } from 'react';
-// eslint-disable-next-line no-unused-vars
-import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Wifi, ArrowDown, Server, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 
 /**
@@ -58,62 +56,57 @@ const NetworkCard = memo(({ info, dlStability, ulStability }) => {
         {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
       </button>
 
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div className="diagnostics-panel">
-              <div className="diag-grid">
-                <div className="diag-item">
-                  <span className="diag-label">HTTP Protocol</span>
-                  <span className="diag-val">{info.http}</span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">TLS Cipher Security</span>
-                  <span className="diag-val">{info.tls}</span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">Edge Gateway Node</span>
-                  <span className="diag-val">{info.colo}</span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">Warp Accel Tunnel</span>
-                  <span className="diag-val">{info.warp === 'on' ? 'Enabled' : 'Disabled'}</span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">Diagnostics Region</span>
-                  <span className="diag-val">{regionLabel}</span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">Platform OS</span>
-                  <span className="diag-val">{info.os}</span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">User Browser</span>
-                  <span className="diag-val">{info.browser}</span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">Download Stream Stability</span>
-                  <span className={`diag-val${dlStability > 85 ? ' green' : dlStability > 60 ? ' amber' : ''}`}>
-                    {dlStability > 0 ? `${dlStability}%` : '--'}
-                  </span>
-                </div>
-                <div className="diag-item">
-                  <span className="diag-label">Upload Stream Stability</span>
-                  <span className={`diag-val${ulStability > 85 ? ' green' : ulStability > 60 ? ' amber' : ''}`}>
-                    {ulStability > 0 ? `${ulStability}%` : '--'}
-                  </span>
-                </div>
+      {expanded && (
+        <div
+          className="fade-in-up"
+          style={{ overflow: 'hidden' }}
+        >
+          <div className="diagnostics-panel">
+            <div className="diag-grid">
+              <div className="diag-item">
+                <span className="diag-label">HTTP Protocol</span>
+                <span className="diag-val">{info.http}</span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">TLS Cipher Security</span>
+                <span className="diag-val">{info.tls}</span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">Edge Gateway Node</span>
+                <span className="diag-val">{info.colo}</span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">Warp Accel Tunnel</span>
+                <span className="diag-val">{info.warp === 'on' ? 'Enabled' : 'Disabled'}</span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">Diagnostics Region</span>
+                <span className="diag-val">{regionLabel}</span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">Platform OS</span>
+                <span className="diag-val">{info.os}</span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">User Browser</span>
+                <span className="diag-val">{info.browser}</span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">Download Stream Stability</span>
+                <span className={`diag-val${dlStability > 85 ? ' green' : dlStability > 60 ? ' amber' : ''}`}>
+                  {dlStability > 0 ? `${dlStability}%` : '--'}
+                </span>
+              </div>
+              <div className="diag-item">
+                <span className="diag-label">Upload Stream Stability</span>
+                <span className={`diag-val${ulStability > 85 ? ' green' : ulStability > 60 ? ' amber' : ''}`}>
+                  {ulStability > 0 ? `${ulStability}%` : '--'}
+                </span>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
     </section>
   );
 });
