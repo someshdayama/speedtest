@@ -3,16 +3,15 @@
  * Detailed "Expert Report" view for a single speed test.
  */
 
-import { memo, useEffect, useCallback, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { FileText, Download, Upload, Activity, AlertTriangle, ShieldCheck, Clock, Server } from 'lucide-react';
 import SpeedChart from './SpeedChart.jsx';
 
 /** @param {number} n */
 const fmt = (n) => (typeof n === 'number' && n > 0 ? n.toFixed(1) : '--');
 
-const StatBox = ({ label, value, unit, icon: Icon, colorClass }) => (
+const StatBox = ({ label, value, unit, colorClass }) => (
   <div className={`er-stat-box ${colorClass}`}>
-    <div className="er-stat-icon"><Icon size={14} /></div>
     <div className="er-stat-content">
       <div className="er-stat-label">{label}</div>
       <div className="er-stat-value">

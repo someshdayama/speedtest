@@ -1,7 +1,7 @@
 /**
  * @file ParticleBackground.jsx
  * High-performance HTML5 Canvas-based speed-reactive particle backdrop.
- * Renders a starry cosmos with parallax depth and vector stretching speed streaks.
+ * Smooth color morphing between test phases using linear interpolation.
  */
 
 import { useEffect, useRef, memo } from 'react';
@@ -9,7 +9,6 @@ import { useEffect, useRef, memo } from 'react';
 class Particle {
   constructor(width, height) {
     this.reset(width, height);
-    // Initially randomize x positions so they don't all start from the left edge
     this.x = Math.random() * (width + 120) - 60;
   }
 
@@ -17,18 +16,12 @@ class Particle {
     this.x = -60;
     this.baseY = Math.random() * height;
     this.y = this.baseY;
-    
-    // Parallax depth: 0.2 (far, slow, tiny) to 1.0 (near, fast, larger)
     this.depth = Math.random() * 0.8 + 0.2;
     this.size = (Math.random() * 1.5 + 0.8) * this.depth;
-    
     this.baseSpeedX = (Math.random() * 0.4 + 0.4) * this.depth;
-    
-    // Wave movement parameters (sine wave displacement)
     this.wavePhase = Math.random() * Math.PI * 2;
-    this.waveAmplitude = (Math.random() * 10 + 5) * (1 - this.depth); // background waves drift more vertically
+    this.waveAmplitude = (Math.random() * 10 + 5) * (1 - this.depth);
     this.waveFrequency = Math.random() * 0.005 + 0.002;
-    
     this.alpha = (Math.random() * 0.45 + 0.2) * this.depth;
   }
 
@@ -36,40 +29,24 @@ class Particle {
     const validSpeed = Number.isFinite(currSpeed) && currSpeed > 0 ? currSpeed : 0;
     const speedMultiplier = 1 + Math.min(validSpeed / 2.0, 90) * this.depth;
     this.x += this.baseSpeedX * speedMultiplier;
-    
-    // Soft sinusoidal wave displacement
     this.y = this.baseY + Math.sin(this.x * this.waveFrequency + this.wavePhase) * this.waveAmplitude;
-
-    if (this.x > width + 60) {
-      this.reset(width, height);
-    }
+    if (this.x > width + 60) this.reset(width, height);
   }
 
-  draw(ctx, currSpeed, color, width, height) {
-    // Boundary checks
-    if (this.x < -100 || this.x > width + 100 || this.y < -100 || this.y > height + 100) {
-      return;
-    }
-
+  draw(ctx, currSpeed, r, g, b, width, height) {
+    if (this.x < -100 || this.x > width + 100 || this.y < -100 || this.y > height + 100) return;
     ctx.save();
-    
-    // Boundary edge fade-in / fade-out to prevent sudden popping
     let edgeAlpha = 1;
-    if (this.x < 100) {
-      edgeAlpha = this.x / 100;
-    } else if (this.x > width - 100) {
-      edgeAlpha = (width - this.x) / 100;
-    }
+    if (this.x < 100) edgeAlpha = this.x / 100;
+    else if (this.x > width - 100) edgeAlpha = (width - this.x) / 100;
     edgeAlpha = Math.max(0, Math.min(1, edgeAlpha));
-    
     ctx.globalAlpha = this.alpha * edgeAlpha;
+    const color = `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = this.size;
-
     const validSpeed = Number.isFinite(currSpeed) && currSpeed > 0 ? currSpeed : 0;
     const speedFactor = Math.min(validSpeed / 2.0, 90);
-
     if (speedFactor > 1.5) {
       const length = Math.min(speedFactor * 2.2 * this.depth, 160);
       ctx.beginPath();
@@ -85,30 +62,27 @@ class Particle {
   }
 }
 
-/**
- * @param {{ speed: number, status: string }} props
- */
+// Target color [r, g, b] per status
+const STATUS_COLORS = {
+  idle:        [255, 255, 255],
+  pinging:     [240, 180,  41],
+  downloading: [ 94,  94, 240],
+  uploading:   [ 61, 214, 140],
+  finished:    [200, 200, 220],
+};
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const LERP_SPEED = 0.022; // ~1.5s transition at 60fps
+
 const ParticleBackground = memo(({ status }) => {
   const canvasRef = useRef(null);
-  
   const speedRef = useRef(0);
   const statusRef = useRef(status);
-  const wakeUpRef = useRef(null);
+
+  useEffect(() => { statusRef.current = status; }, [status]);
 
   useEffect(() => {
-    statusRef.current = status;
-    if (wakeUpRef.current) {
-      wakeUpRef.current();
-    }
-  }, [status]);
-
-  useEffect(() => {
-    const handleSpeed = (e) => {
-      speedRef.current = e.detail;
-      if (wakeUpRef.current) {
-        wakeUpRef.current();
-      }
-    };
+    const handleSpeed = (e) => { speedRef.current = e.detail; };
     window.addEventListener('speed-update', handleSpeed);
     return () => window.removeEventListener('speed-update', handleSpeed);
   }, []);
@@ -122,8 +96,8 @@ const ParticleBackground = memo(({ status }) => {
     let animationId;
     let width = window.innerWidth;
     let height = window.innerHeight;
-    let lastActiveTime = Date.now();
-    let isSuspended = false;
+    // Start with idle color
+    let currentColor = [...STATUS_COLORS['idle']];
 
     const resizeCanvas = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -135,74 +109,36 @@ const ParticleBackground = memo(({ status }) => {
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
-
     resizeCanvas();
+    window.addEventListener('resize', resizeCanvas, { passive: true });
 
-    const handleResize = () => {
-      resizeCanvas();
-    };
-    window.addEventListener('resize', handleResize, { passive: true });
-
-    const wakeUp = () => {
-      lastActiveTime = Date.now();
-      if (isSuspended) {
-        isSuspended = false;
-        animationId = requestAnimationFrame(tick);
-      }
-    };
-    wakeUpRef.current = wakeUp;
-
-    window.addEventListener('mousemove', wakeUp, { passive: true });
-    window.addEventListener('touchstart', wakeUp, { passive: true });
-
-    // 100 particles gives a rich but highly-optimized starry cosmos
     const particleCount = 100;
     const particles = Array.from({ length: particleCount }, () => new Particle(width, height));
 
     const tick = () => {
       const currentStatus = statusRef.current;
       const isRunning = currentStatus === 'pinging' || currentStatus === 'downloading' || currentStatus === 'uploading';
-      
-      if (isRunning) {
-        lastActiveTime = Date.now();
-      } else if (Date.now() - lastActiveTime > 5000) {
-        isSuspended = true;
-        ctx.clearRect(0, 0, width, height);
-        return;
-      }
-
       ctx.clearRect(0, 0, width, height);
-
       const currentSpeed = isRunning ? speedRef.current : 0;
 
-      // Map color profiles (solid colors, opacity is controlled entirely by particle alpha)
-      let color = 'rgb(255, 255, 255)'; // Idle
-      if (currentStatus === 'pinging') {
-        color = 'rgb(240, 180, 41)'; // Ping: Warm Amber
-      } else if (currentStatus === 'downloading') {
-        color = 'rgb(94, 94, 240)'; // Download: Violet/Indigo
-      } else if (currentStatus === 'uploading') {
-        color = 'rgb(61, 214, 140)'; // Upload: Green/Mint
-      } else if (currentStatus === 'finished') {
-        color = 'rgb(255, 255, 255)'; // Finished: Soft white
-      }
+      // Smoothly interpolate toward target color
+      const target = STATUS_COLORS[currentStatus] || STATUS_COLORS['idle'];
+      currentColor[0] = lerp(currentColor[0], target[0], LERP_SPEED);
+      currentColor[1] = lerp(currentColor[1], target[1], LERP_SPEED);
+      currentColor[2] = lerp(currentColor[2], target[2], LERP_SPEED);
 
+      const [r, g, b] = currentColor;
       for (let i = 0; i < particles.length; i++) {
         particles[i].update(currentSpeed, width, height);
-        particles[i].draw(ctx, currentSpeed, color, width, height);
+        particles[i].draw(ctx, currentSpeed, r, g, b, width, height);
       }
-
       animationId = requestAnimationFrame(tick);
     };
-
     tick();
 
     return () => {
       cancelAnimationFrame(animationId);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('mousemove', wakeUp);
-      window.removeEventListener('touchstart', wakeUp);
-      wakeUpRef.current = null;
+      window.removeEventListener('resize', resizeCanvas);
     };
   }, []);
 
@@ -223,5 +159,4 @@ const ParticleBackground = memo(({ status }) => {
 });
 
 ParticleBackground.displayName = 'ParticleBackground';
-
 export default ParticleBackground;

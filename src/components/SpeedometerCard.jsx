@@ -4,12 +4,51 @@
  * Prevents full App.jsx reconciliation at 60fps.
  */
 
-import { memo, useMemo, useEffect } from 'react';
+import { memo, useMemo, useEffect, useRef } from 'react';
 import useSpring from '../hooks/useSpring.js';
 import PhaseBar from './PhaseBar.jsx';
 import ArcGauge from './ArcGauge.jsx';
 import SpeedChart from './SpeedChart.jsx';
 import { STATUS } from '../constants.js';
+
+// ── Odometer digit reel ──────────────────────────────────────────────────────
+const DIGITS = '0123456789';
+
+const OdometerDigit = memo(({ char }) => {
+  const isDigit = DIGITS.includes(char);
+  const prevRef = useRef(char);
+  useEffect(() => { prevRef.current = char; });
+
+  if (!isDigit) {
+    return (
+      <span className="odo-separator">{char}</span>
+    );
+  }
+
+  return (
+    <span className="odo-digit-wrap" aria-hidden="true">
+      <span
+        className="odo-digit-reel"
+        style={{ '--d': char }}
+        key={char}
+      >
+        {[...DIGITS].map(d => (
+          <span key={d} className="odo-digit-cell">{d}</span>
+        ))}
+      </span>
+    </span>
+  );
+});
+OdometerDigit.displayName = 'OdometerDigit';
+
+const OdometerNumber = memo(({ value }) => (
+  <span className="odo-number">
+    {[...String(value)].map((char, i) => (
+      <OdometerDigit key={i} char={char} />
+    ))}
+  </span>
+));
+OdometerNumber.displayName = 'OdometerNumber';
 
 const PHASE_LABELS = {
   [STATUS.IDLE]:        'READY',
@@ -85,7 +124,7 @@ const SpeedometerCard = memo(({
             className={`speed-number${numColor}`}
             aria-hidden="true"
           >
-            {displayString}
+            <OdometerNumber value={displayString} />
           </div>
 
           <div className="speed-meta" aria-hidden="true">

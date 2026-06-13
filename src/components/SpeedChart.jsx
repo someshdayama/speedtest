@@ -1,6 +1,5 @@
 import { memo } from 'react';
 
-const formatValue = (v) => `${typeof v === 'number' ? v.toFixed(1) : '--'} Mbps`;
 
 const SpeedChart = memo(({ data, type }) => {
   if (!data || data.length < 2) return null;

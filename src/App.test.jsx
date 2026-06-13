@@ -31,16 +31,11 @@ describe('Velocity App Component', () => {
         localStorageMock.getItem.mockReturnValue(JSON.stringify([]));
     });
 
-    it('renders correctly on mount and dynamically grabs network details', async () => {
+    it('renders correctly on mount', () => {
         render(<App />);
 
-        expect(screen.getByText(/Velocity/i)).toBeInTheDocument();
-        expect(screen.getByText(/True Network Performance Insights/i)).toBeInTheDocument();
-        expect(screen.getByText('READY')).toBeInTheDocument();
-
-        await waitFor(() => {
-            expect(screen.getByText('Mock Provider')).toBeInTheDocument();
-        });
+        expect(screen.getAllByText(/Velocity/i)[0]).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Start speed test/i })).toBeInTheDocument();
     });
 
     it('executes the full speed test sequence completely rendering the values safely', async () => {
@@ -62,14 +57,15 @@ describe('Velocity App Component', () => {
 
         render(<App />);
 
-        const startButton = screen.getByRole('button', { name: /START TEST/i });
+        const startButton = screen.getByRole('button', { name: /Start speed test/i });
         fireEvent.click(startButton);
 
         await waitFor(() => {
-            expect(screen.getByText('DOWNLOAD SPEED')).toBeInTheDocument();
+            expect(screen.getByRole('article', { name: /Download/i })).toBeInTheDocument();
         }, { timeout: 4000 });
 
-        expect(screen.getByRole('button', { name: /TEST AGAIN/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Run test again/i })).toBeInTheDocument();
+        expect(screen.getByText('Mock Provider')).toBeInTheDocument();
     });
 
     it('handles testing errors gracefully without crashing the React UI payload', async () => {
@@ -78,12 +74,11 @@ describe('Velocity App Component', () => {
         });
 
         render(<App />);
-        const startButton = screen.getByRole('button', { name: /START TEST/i });
+        const startButton = screen.getByRole('button', { name: /Start speed test/i });
         fireEvent.click(startButton);
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: /START TEST/i })).toBeInTheDocument();
-            expect(screen.getByText('READY')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /Start speed test/i })).toBeInTheDocument();
         }, { timeout: 3000 });
     });
 });

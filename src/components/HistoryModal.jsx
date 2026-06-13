@@ -8,7 +8,7 @@
  *  - Backdrop click and Escape key both close the modal
  */
 
-import { memo, useEffect, useCallback, useState, useRef } from 'react';
+import { memo, useEffect, useState, useRef } from 'react';
 import { History, Activity, Trash2, Download, ChevronRight } from 'lucide-react';
 import Sparkline from './Sparkline.jsx';
 import ExpertReportModal from './ExpertReportModal.jsx';
@@ -191,6 +191,21 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
 
                   {history.map((row, i) => {
                     const { day, time } = formatDate(row.date);
+                    // Build mini sparkline path from dlData
+                    const dlPts = (row.dlData || []).filter(p => p.speed > 0);
+                    const hasSpark = dlPts.length > 1;
+                    let miniPath = '';
+                    if (hasSpark) {
+                      const W = 44, H = 20;
+                      const maxV = Math.max(...dlPts.map(p => p.speed));
+                      const pts = dlPts.map((p, idx) => {
+                        const x = (idx / (dlPts.length - 1)) * W;
+                        const y = H - (p.speed / maxV) * H;
+                        return `${x.toFixed(1)},${y.toFixed(1)}`;
+                      });
+                      miniPath = pts.join(' ');
+                    }
+
                     return (
                       <div
                         key={row.date + i}
@@ -207,7 +222,23 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                         <div className="h-val dl">{fmt(row.download)}</div>
                         <div className="h-val ul">{fmt(row.upload)}</div>
                         <div className="h-val ping">{row.ping}ms</div>
-                        <div className="h-val h-icon"><ChevronRight size={14} opacity={0.5} /></div>
+                        {hasSpark ? (
+                          <div className="h-spark" aria-hidden="true">
+                            <svg width="44" height="20" viewBox="0 0 44 20" fill="none">
+                              <polyline
+                                points={miniPath}
+                                stroke="var(--accent)"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                opacity="0.6"
+                                fill="none"
+                              />
+                            </svg>
+                          </div>
+                        ) : (
+                          <div className="h-val h-icon"><ChevronRight size={14} opacity={0.5} /></div>
+                        )}
                       </div>
                     );
                   })}
