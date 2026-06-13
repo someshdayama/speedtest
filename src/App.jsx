@@ -339,7 +339,7 @@ export default function App() {
           return 'just now';
         })();
         return (
-          <div className="last-result-bar fade-in" role="complementary" aria-label="Last test results">
+          <div className="last-result-bar lrb-fade-in" role="complementary" aria-label="Last test results">
             <span className="lrb-label">Last<span className="lrb-text-extra"> run</span></span>
             <span className="lrb-sep">·</span>
             <span className="lrb-item lrb-dl">↓ {last.download > 0 ? last.download.toFixed(1) : '--'}<span className="lrb-unit"> Mbps</span></span>
