@@ -61,11 +61,8 @@ export default function App() {
   const [showHistory, setShowHistory]         = useState(false);
   const [showExpertReport, setShowExpertReport] = useState(false);
   const [toast, setToast]                     = useState(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [isTransitioningBack, setIsTransitioningBack] = useState(false);
   const [hasStarted, setHasStarted]           = useState(false);
   const toastTimerRef = useRef(null);
-  const transTimerRef = useRef(null);
 
   const openHistory  = useCallback(() => setShowHistory(true),  []);
   const closeHistory = useCallback(() => setShowHistory(false), []);
@@ -90,30 +87,16 @@ export default function App() {
     }
   }, [metrics, score, showToast]);
 
-  // Kick off the cinematic hero→nav transition, then start the test
+  // Start the test directly
   const handleStartTest = useCallback(() => {
     setHasStarted(true);
-    setIsTransitioning(true);
     runTest();
-    if (transTimerRef.current) clearTimeout(transTimerRef.current);
-    transTimerRef.current = setTimeout(() => setIsTransitioning(false), 750);
   }, [runTest]);
 
-  // Reset from dashboard/running state back to idle hero
-  const handleHeaderBrandClick = useCallback(() => {
-    if (!isIdle && !isTransitioning && !isTransitioningBack) {
-      setIsTransitioningBack(true);
-      stopTest();
-      if (transTimerRef.current) clearTimeout(transTimerRef.current);
-      transTimerRef.current = setTimeout(() => setIsTransitioningBack(false), 750);
-    }
-  }, [isIdle, isTransitioning, isTransitioningBack, stopTest]);
+  const isNavMode = true;
+  const brandMode = 'nav-mode';
 
-  const isNavMode = isTransitioning || (!isIdle && !isTransitioningBack);
-  const brandMode = isNavMode ? 'nav-mode' : 'hero-mode';
-
-  const showHero = isIdle || isTransitioning || isTransitioningBack;
-  const showDashboard = !isIdle || isTransitioning || isTransitioningBack;
+  const showDashboard = true;
 
   const latestReport = history[0] ?? null;
 
@@ -132,14 +115,13 @@ export default function App() {
         {/* Unified animated brand */}
         <div
           className={`unified-brand ${brandMode} ${!hasStarted ? 'is-initial' : ''}`}
-          onClick={isNavMode ? handleHeaderBrandClick : undefined}
           aria-hidden="true"
         >
           <h1>Velocity</h1>
         </div>
 
         {/* ── Header ── */}
-        <header className={`header ${!isNavMode ? 'is-idle' : ''}`}>
+        <header className="header">
           {/* Placeholder to keep layout spacing in the header */}
           <div className="header-brand-placeholder">
             <h1>Velocity</h1>
@@ -158,36 +140,9 @@ export default function App() {
           </nav>
         </header>
 
-        {/* ── Idle Hero ── */}
-        {showHero && (
-          <div
-            className={`idle-hero ${
-              isTransitioning ? 'hero-transitioning' :
-              isTransitioningBack ? 'hero-transitioning-back' :
-              ''
-            }`}
-            aria-label="Ready to test"
-          >
-            <button
-              id="start-test-btn"
-              className="action-button-pill"
-              onClick={handleStartTest}
-              aria-label="Start speed test"
-            >
-              Start Test
-            </button>
-          </div>
-        )}
-
         {/* ── Dashboard (running or finished) ── */}
         {showDashboard && (
-          <main
-            className={`dashboard ${
-              isTransitioning ? 'dashboard-enter' :
-              isTransitioningBack ? 'dashboard-exit' :
-              ''
-            }`}
-          >
+          <main className="dashboard">
 
             {/* Left — Gauge + actions */}
             <section
@@ -205,6 +160,16 @@ export default function App() {
               />
 
               {/* CTA row */}
+              {isIdle && (
+                <button
+                  className="action-button"
+                  onClick={handleStartTest}
+                  aria-label="Start test"
+                >
+                  Start Test
+                </button>
+              )}
+
               {isRunning && (
                 <button
                   className="action-button is-stopping"
