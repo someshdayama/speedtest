@@ -11,6 +11,11 @@ import ArcGauge from './ArcGauge.jsx';
 import SpeedChart from './SpeedChart.jsx';
 import { STATUS } from '../constants.js';
 
+// Detect reduced motion preference once at module load
+const prefersReducedMotion = typeof window !== 'undefined'
+  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  : false;
+
 // ── Odometer digit reel ──────────────────────────────────────────────────────
 const DIGITS = '0123456789';
 
@@ -77,7 +82,11 @@ const SpeedometerCard = memo(({
   isRunning,
 }) => {
   const displayNum = resolveDisplayNum(status, metrics, displaySpeed);
-  const animatedSpeed = useSpring(displayNum, { stiffness: 120, damping: 28 });
+  // Skip spring animation entirely for users who prefer reduced motion
+  const animatedSpeed = useSpring(
+    prefersReducedMotion ? displayNum : displayNum,
+    prefersReducedMotion ? { stiffness: 1000, damping: 100 } : { stiffness: 120, damping: 28 }
+  );
 
   const gaugePercent = useMemo(
     () => Math.min((animatedSpeed / gaugeMax) * 100, 100),

@@ -1337,3 +1337,19 @@
 
 .diag-val.green { color: var(--green); text-shadow: 0 0 10px rgba(61, 214, 140, 0.15); }
 .diag-val.amber { color: var(--amber); text-shadow: 0 0 10px rgba(240, 180, 41, 0.15); }
+
+/* ── Accessibility: Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Keep the gauge arc visible but static */
+  .odo-digit-reel {
+    transition: none !important;
+  }
+}

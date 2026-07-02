@@ -5,7 +5,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ArrowDown, ArrowUp, Activity, History, Share2, FileText } from 'lucide-react';
+import { ArrowDown, ArrowUp, Activity, History, Share2, FileText, Wifi } from 'lucide-react';
 
 import useSpeedTest            from './hooks/useSpeedTest.js';
 import useNetworkInfo          from './hooks/useNetworkInfo.js';
@@ -24,7 +24,7 @@ import './App.css';
 const ICON_DOWNLOAD = <ArrowDown size={13} />;
 const ICON_UPLOAD   = <ArrowUp size={13} />;
 const ICON_PING     = <Activity size={13} />;
-const ICON_LOADED   = <Activity size={13} />;
+const ICON_LOADED   = <Wifi size={13} />;
 
 
 
