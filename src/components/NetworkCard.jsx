@@ -37,12 +37,13 @@ const NetworkCard = memo(({ info, dlStability, ulStability }) => {
     <section className="network-card" aria-label="Network information and diagnostics">
       <div className="network-card-header">
         <Globe size={12} aria-hidden="true" /> Network Info
+        <span className="network-estimate-hint">Browser estimate</span>
       </div>
       
       <div className="network-rows">
         <Row icon={<Server size={13} />}    label="Provider"   value={info.provider} />
-        <Row icon={<Wifi size={13} />}      label="Connection" value={info.type} />
-        <Row icon={<ArrowDown size={13} />} label="Est. Downlink" value={info.downlink} />
+        <Row icon={<Wifi size={13} />}      label="Connection type" value={info.type} />
+        <Row icon={<ArrowDown size={13} />} label="Browser downlink" value={info.downlink} />
         <Row icon={<Globe size={13} />}     label="IP Address" value={info.ip} />
       </div>
 

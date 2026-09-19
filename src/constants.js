@@ -7,7 +7,8 @@
 
 export const ENDPOINTS = Object.freeze({
   PING: 'https://cloudflare.com/cdn-cgi/trace',
-  DOWNLOAD: 'https://speed.cloudflare.com/__down?bytes=50000000',
+  /** Base download URL — append bytes=N for progressive payload sizes */
+  DOWNLOAD: 'https://speed.cloudflare.com/__down',
   UPLOAD: 'https://speed.cloudflare.com/__up',
   IP_PRIMARY: 'https://ipinfo.io/json',
   IP_FALLBACK: 'https://api.ipify.org?format=json',
@@ -19,10 +20,10 @@ export const TIMEOUTS = Object.freeze({
   PING_REQUEST: 5_000,
   BUFFERBLOAT_POLL: 500,
   BUFFERBLOAT_REQ: 2_000,
-  DOWNLOAD_MAX: 10_000,
-  UPLOAD_MAX: 10_000,
+  DOWNLOAD_MAX: 12_000,
+  UPLOAD_MAX: 12_000,
   NETWORK_INFO: 3_000,
-  PAUSE_BETWEEN: 1_000,
+  PAUSE_BETWEEN: 800,
 });
 
 // ─── Test parameters ─────────────────────────────────────────────────────────
@@ -30,9 +31,27 @@ export const TIMEOUTS = Object.freeze({
 export const TEST = Object.freeze({
   CONNECTIONS: 4,
   PROGRESS_INTERVAL: 100,
+  PING_SAMPLES: 8,
+  PING_WARMUP: 1,
+  /** Progressive download payload sizes (bytes) — Cloudflare __down?bytes=N */
+  DOWNLOAD_SIZES: Object.freeze([
+    1_000_000,   // 1 MB  — warm TCP / early estimate
+    5_000_000,   // 5 MB
+    25_000_000,  // 25 MB
+    50_000_000,  // 50 MB — saturate high-bandwidth links
+  ]),
   UPLOAD_INITIAL_CHUNK: 256 * 1024,
   UPLOAD_MIN_CHUNK: 64 * 1024,
   UPLOAD_MAX_CHUNK: 2 * 1024 * 1024,
+  /** Discard first N seconds of transfer for TCP window warmup */
+  WARMUP_MS: 1_000,
+  /** Use last portion of progress samples for final Mbps (stability) */
+  FINAL_SAMPLE_RATIO: 0.35,
+  FINAL_MIN_SAMPLES: 4,
+  /** Early-exit when post-warmup samples are stable */
+  EARLY_EXIT_MIN_MS: 4_000,
+  EARLY_EXIT_MIN_SAMPLES: 12,
+  EARLY_EXIT_CV: 0.08,
 });
 
 // ─── Gauge geometry ───────────────────────────────────────────────────────────
@@ -45,15 +64,6 @@ export const TEST = Object.freeze({
 //
 // Arc: symmetric about vertical axis, gap at the bottom.
 //   START = 220°, SWEEP = 280°, END = 140°
-//   Both endpoints land at the same y  (verified: y = CY + R·sin(130°))
-//
-//   Top of arc : y = CY − R = 110 − 95 = 15    ✓ within HEIGHT
-//   Endpoints  : y = CY + R·sin(130°) ≈ 183     ✓ within HEIGHT (200)
-//   Left end   : x = CX + R·cos(130°) ≈  79     ✓ within WIDTH
-//   Right end  : x = CX + R·cos(50°)  ≈ 201     ✓ within WIDTH
-//
-// Number overlay sits at the arc's circle-center (CX, CY):
-//   top: CY / HEIGHT = 110/200 = 55 %
 //
 export const GAUGE = Object.freeze({
   WIDTH: 280,
@@ -79,12 +89,14 @@ export const LIMITS = Object.freeze({
 
 export const MSG = Object.freeze({
   START: 'start',
+  ABORT: 'abort',
   STATUS: 'status',
   PING_RESULT: 'pingResult',
   DOWNLOAD_PROGRESS: 'downloadProgress',
   DOWNLOAD_COMPLETE: 'downloadComplete',
   UPLOAD_PROGRESS: 'uploadProgress',
   UPLOAD_COMPLETE: 'uploadComplete',
+  PHASE_PROGRESS: 'phaseProgress',
   ERROR: 'error',
 });
 
@@ -96,6 +108,7 @@ export const STATUS = Object.freeze({
   DOWNLOADING: 'downloading',
   UPLOADING: 'uploading',
   FINISHED: 'finished',
+  ERROR: 'error',
 });
 
 // ─── Local storage keys ───────────────────────────────────────────────────────
@@ -116,4 +129,15 @@ export const SCORE_BANDS = Object.freeze({
   DL: { GREAT: 100, OK: 25, LOW: 5 },
   UL: { GREAT: 20, OK: 5, LOW: 1 },
   PING: { GREAT: 20, OK: 50, LOW: 100 },
+});
+
+// ─── Human-readable phase labels ──────────────────────────────────────────────
+
+export const PHASE_LABELS = Object.freeze({
+  [STATUS.IDLE]: 'Ready',
+  [STATUS.PINGING]: 'Measuring latency…',
+  [STATUS.DOWNLOADING]: 'Testing download…',
+  [STATUS.UPLOADING]: 'Testing upload…',
+  [STATUS.FINISHED]: 'Complete',
+  [STATUS.ERROR]: 'Test failed',
 });
