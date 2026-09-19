@@ -78,6 +78,8 @@ describe('Velocity App Component', () => {
         fireEvent.click(startButton);
 
         await waitFor(() => {
+            expect(screen.getByRole('alert')).toBeInTheDocument();
+            expect(screen.getByText(/Network Down simulated/i)).toBeInTheDocument();
             expect(screen.getByRole('button', { name: /Start speed test/i })).toBeInTheDocument();
         }, { timeout: 3000 });
     });

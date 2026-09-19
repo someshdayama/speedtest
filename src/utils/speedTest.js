@@ -8,8 +8,6 @@
  * Security:
  *  - Validates every inbound worker message against MSG allow-list.
  *  - Callbacks are invoked only for known message types.
- *  - No data from the worker is reflected into the DOM directly;
- *    callers are responsible for sanitisation before display.
  */
 
 import { MSG } from '../constants.js';
@@ -26,7 +24,8 @@ let activeWorker = null;
  * @property {(speed: number, loadedPing: number) => void} onDownloadComplete
  * @property {(speed: number)   => void} onUploadProgress
  * @property {(speed: number, loadedPing: number) => void} onUploadComplete
- * @property {(err: ErrorEvent) => void} onError
+ * @property {(progress: number) => void} [onPhaseProgress]
+ * @property {(err: Error) => void} onError
  */
 
 /**
@@ -34,13 +33,11 @@ let activeWorker = null;
  * @param {SpeedTestCallbacks} callbacks
  */
 export const startSpeedTest = (callbacks) => {
-  // Terminate any previous worker before creating a new one.
   stopSpeedTest();
 
   activeWorker = new SpeedTestWorker();
 
   activeWorker.onmessage = ({ data }) => {
-    // Validate type field before dispatching — ignore unknown messages.
     if (!data || typeof data.type !== 'string') return;
 
     switch (data.type) {
@@ -62,27 +59,38 @@ export const startSpeedTest = (callbacks) => {
       case MSG.UPLOAD_COMPLETE:
         callbacks.onUploadComplete(data.speed, data.loadedPing ?? 0);
         break;
-      case MSG.ERROR:
-        callbacks.onError(new Error(data.message ?? 'Worker error'));
+      case MSG.PHASE_PROGRESS:
+        callbacks.onPhaseProgress?.(data.progress ?? 0);
         break;
+      case MSG.ERROR: {
+        const err = new Error(data.message ?? 'Worker error');
+        err.code = data.code;
+        callbacks.onError(err);
+        break;
+      }
       default:
-        // Unknown type — discard silently.
         break;
     }
   };
 
   activeWorker.onerror = (err) => {
-    callbacks.onError(err);
+    callbacks.onError(err instanceof Error ? err : new Error('Worker crashed'));
   };
 
   activeWorker.postMessage({ type: MSG.START });
 };
 
 /**
- * Terminate the active worker if one is running.
+ * Request a graceful abort, then terminate the worker.
  * Safe to call even when no test is in progress.
  */
 export const stopSpeedTest = () => {
-  activeWorker?.terminate();
+  if (!activeWorker) return;
+  try {
+    activeWorker.postMessage({ type: MSG.ABORT });
+  } catch {
+    // worker may already be dead
+  }
+  activeWorker.terminate();
   activeWorker = null;
 };

@@ -69,6 +69,7 @@ const STATUS_COLORS = {
   downloading: [ 94,  94, 240],
   uploading:   [ 61, 214, 140],
   finished:    [200, 200, 220],
+  error:       [248, 113, 113],
 };
 
 const lerp = (a, b, t) => a + (b - a) * t;

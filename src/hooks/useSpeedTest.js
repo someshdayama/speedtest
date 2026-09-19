@@ -30,7 +30,8 @@ const emptyMetrics = () => ({ ping: 0, jitter: 0, download: 0, upload: 0, loaded
  * @returns {number}
  */
 export const calcScore = (dl, ul, ping) => {
-  if (!dl) return 0;
+  // Require a real download sample — incomplete / failed tests score 0.
+  if (!dl || dl <= 0) return 0;
   let s = 0;
 
   if (dl >= SCORE_BANDS.DL.GREAT) s += 40;
@@ -41,9 +42,13 @@ export const calcScore = (dl, ul, ping) => {
   else if (ul >= SCORE_BANDS.UL.OK) s += 18;
   else if (ul >= SCORE_BANDS.UL.LOW) s += 8;
 
-  if (ping <= SCORE_BANDS.PING.GREAT) s += 30;
-  else if (ping <= SCORE_BANDS.PING.OK) s += 20;
-  else if (ping <= SCORE_BANDS.PING.LOW) s += 10;
+  // ping === 0 means "no valid latency sample" (failed/skipped), NOT perfect latency.
+  // Only award ping points when we have a positive measured RTT.
+  if (typeof ping === 'number' && ping > 0) {
+    if (ping <= SCORE_BANDS.PING.GREAT) s += 30;
+    else if (ping <= SCORE_BANDS.PING.OK) s += 20;
+    else if (ping <= SCORE_BANDS.PING.LOW) s += 10;
+  }
 
   return s;
 };
@@ -70,7 +75,6 @@ export const calcStability = (samples) => {
 
 /**
  * Safely parse history from localStorage.
- * Returns an empty array on any parse / schema error.
  * @returns {Array<object>}
  */
 const loadHistory = () => {
@@ -78,15 +82,14 @@ const loadHistory = () => {
     const raw = localStorage.getItem(STORAGE.HISTORY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    // Validate: must be an array of objects with required numeric fields.
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (r) =>
         r &&
-        typeof r.date     === 'string' &&
+        typeof r.date === 'string' &&
         typeof r.download === 'number' &&
-        typeof r.upload   === 'number' &&
-        typeof r.ping     === 'number',
+        typeof r.upload === 'number' &&
+        typeof r.ping === 'number',
     );
   } catch {
     return [];
@@ -105,21 +108,6 @@ const saveHistory = (history) => {
   }
 };
 
-/**
- * @typedef {Object} SpeedTestHook
- * @property {string}   status
- * @property {Metrics}  metrics
- * @property {number}   displaySpeed
- * @property {number}   gaugeMax
- * @property {Array}    dlData
- * @property {Array}    ulData
- * @property {Array}    history
- * @property {boolean}  isRunning
- * @property {number}   score
- * @property {() => void} runTest
- * @property {() => void} clearHistory
- */
-
 const initialState = {
   status: STATUS.IDLE,
   metrics: emptyMetrics(),
@@ -128,6 +116,8 @@ const initialState = {
   dlData: [],
   ulData: [],
   history: loadHistory(),
+  phaseProgress: 0,
+  errorMessage: null,
 };
 
 const updateSpeedState = (state, speed) => {
@@ -159,9 +149,13 @@ const reducer = (state, action) => {
         metrics: emptyMetrics(),
         dlData: [],
         ulData: [],
+        phaseProgress: 0,
+        errorMessage: null,
       };
     case 'SET_STATUS':
-      return { ...state, status: action.payload };
+      return { ...state, status: action.payload, errorMessage: null };
+    case 'SET_PHASE_PROGRESS':
+      return { ...state, phaseProgress: action.payload };
     case 'PING_RESULT': {
       const { ping, jitter } = action.payload;
       return {
@@ -183,7 +177,11 @@ const reducer = (state, action) => {
       const { speed, loadedPing } = action.payload;
       return {
         ...state,
-        metrics: { ...state.metrics, download: speed, loadedPing: loadedPing || state.metrics.loadedPing },
+        metrics: {
+          ...state.metrics,
+          download: speed,
+          loadedPing: loadedPing || state.metrics.loadedPing,
+        },
         ...updateSpeedState(state, speed),
       };
     }
@@ -198,29 +196,52 @@ const reducer = (state, action) => {
     }
     case 'UL_COMPLETE': {
       const { speed, loadedPing, historyEntry } = action.payload;
-      const newHistory = [historyEntry, ...state.history].slice(0, 30);
+      const newHistory = [historyEntry, ...state.history].slice(0, LIMITS.MAX_HISTORY);
       saveHistory(newHistory);
       return {
         ...state,
-        metrics: { ...state.metrics, upload: speed, loadedPing: loadedPing || state.metrics.loadedPing },
+        metrics: {
+          ...state.metrics,
+          upload: speed,
+          loadedPing: loadedPing || state.metrics.loadedPing,
+        },
         history: newHistory,
+        phaseProgress: 100,
         ...updateSpeedState(state, speed),
       };
     }
+    case 'SET_ERROR':
+      return {
+        ...state,
+        status: STATUS.ERROR,
+        errorMessage: action.payload || 'Test failed. Please try again.',
+        phaseProgress: 0,
+      };
     case 'CLEAR_HISTORY':
       saveHistory([]);
       return { ...state, history: [] };
     case 'STOP':
-      return { ...state, status: STATUS.IDLE };
+      return {
+        ...state,
+        status: STATUS.IDLE,
+        phaseProgress: 0,
+        errorMessage: null,
+      };
     default:
       return state;
   }
 };
 
-/** @returns {SpeedTestHook} */
+/** Idle-like statuses that allow starting a new test */
+const canStart = (status) =>
+  status === STATUS.IDLE || status === STATUS.FINISHED || status === STATUS.ERROR;
+
 const useSpeedTest = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const { status, metrics, displaySpeed, gaugeMax, dlData, ulData, history } = state;
+  const {
+    status, metrics, displaySpeed, gaugeMax,
+    dlData, ulData, history, phaseProgress, errorMessage,
+  } = state;
 
   const stateRef = useRef(state);
   useEffect(() => {
@@ -232,24 +253,50 @@ const useSpeedTest = () => {
 
   useEffect(() => () => stopSpeedTest(), []);
 
+  // Reflect browser offline events into error state when idle
+  useEffect(() => {
+    const onOffline = () => {
+      if (canStart(stateRef.current.status) && stateRef.current.status !== STATUS.FINISHED) {
+        dispatch({
+          type: 'SET_ERROR',
+          payload: 'You appear to be offline. Reconnect and try again.',
+        });
+      }
+    };
+    window.addEventListener('offline', onOffline);
+    return () => window.removeEventListener('offline', onOffline);
+  }, []);
+
   const runTest = useCallback(() => {
-    if (stateRef.current.status !== STATUS.IDLE && stateRef.current.status !== STATUS.FINISHED) return;
+    if (!canStart(stateRef.current.status)) return;
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      dispatch({
+        type: 'SET_ERROR',
+        payload: 'You appear to be offline. Reconnect and try again.',
+      });
+      return;
+    }
 
     const t0 = Date.now();
     dispatch({ type: 'START' });
 
     startSpeedTest({
       onStatus: (st) => dispatch({ type: 'SET_STATUS', payload: st }),
+      onPhaseProgress: (pct) => dispatch({ type: 'SET_PHASE_PROGRESS', payload: pct }),
       onPing: (ping, jitter) => dispatch({ type: 'PING_RESULT', payload: { ping, jitter } }),
-      onDownloadProgress: (speed) => dispatch({ type: 'DL_PROGRESS', payload: { speed, time: Date.now() - t0 } }),
-      onDownloadComplete: (speed, loadedPing) => dispatch({ type: 'DL_COMPLETE', payload: { speed, loadedPing } }),
-      onUploadProgress: (speed) => dispatch({ type: 'UL_PROGRESS', payload: { speed, time: Date.now() - t0 } }),
+      onDownloadProgress: (speed) =>
+        dispatch({ type: 'DL_PROGRESS', payload: { speed, time: Date.now() - t0 } }),
+      onDownloadComplete: (speed, loadedPing) =>
+        dispatch({ type: 'DL_COMPLETE', payload: { speed, loadedPing } }),
+      onUploadProgress: (speed) =>
+        dispatch({ type: 'UL_PROGRESS', payload: { speed, time: Date.now() - t0 } }),
       onUploadComplete: (speed, loadedPing) => {
         const currentDlData = stateRef.current.dlData || [];
         const currentUlData = stateRef.current.ulData || [];
         const finalUlData = [...currentUlData, { time: Date.now() - t0, speed }];
         const latestMetrics = stateRef.current.metrics;
-        
+
         const historyEntry = {
           date: new Date().toISOString(),
           download: latestMetrics.download,
@@ -267,7 +314,11 @@ const useSpeedTest = () => {
       },
       onError: (err) => {
         if (import.meta.env.DEV) console.error('[SpeedTest]', err);
-        dispatch({ type: 'SET_STATUS', payload: STATUS.IDLE });
+        stopSpeedTest();
+        dispatch({
+          type: 'SET_ERROR',
+          payload: err?.message || 'Test failed unexpectedly. Please try again.',
+        });
       },
     });
   }, []);
@@ -281,7 +332,10 @@ const useSpeedTest = () => {
     dispatch({ type: 'STOP' });
   }, []);
 
-  const isRunning = status !== STATUS.IDLE && status !== STATUS.FINISHED;
+  const isRunning =
+    status !== STATUS.IDLE &&
+    status !== STATUS.FINISHED &&
+    status !== STATUS.ERROR;
 
   const score = useMemo(
     () => calcScore(metrics.download, metrics.upload, metrics.ping),
@@ -303,6 +357,8 @@ const useSpeedTest = () => {
     score,
     dlStability,
     ulStability,
+    phaseProgress,
+    errorMessage,
     setProvider,
     runTest,
     stopTest,

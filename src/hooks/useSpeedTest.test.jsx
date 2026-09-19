@@ -9,18 +9,25 @@ describe('useSpeedTest helper functions', () => {
     });
 
     it('should calculate perfect score (100) for great network metrics', () => {
-      // Great: download >= 80, upload >= 30, ping <= 15
+      // Great: download >= 100, upload >= 20, ping <= 20 (and ping > 0)
       expect(calcScore(100, 40, 8)).toBe(100);
     });
 
     it('should calculate an intermediate score for average network metrics', () => {
-      // OK download (e.g. 30 Mbps -> 25 points), OK upload (15 Mbps -> 18 points), OK ping (35 ms -> 20 points)
+      // OK download (30 -> 25), OK upload (15 -> 18), OK ping (35 -> 20)
       expect(calcScore(30, 15, 35)).toBe(63);
     });
 
     it('should calculate lower score for poor/low network metrics', () => {
-      // Low download (5 Mbps -> 10 points), Low upload (2 Mbps -> 8 points), Low ping (80 ms -> 10 points)
+      // Low download (5 -> 10), Low upload (2 -> 8), Low ping (80 -> 10)
       expect(calcScore(5, 2, 80)).toBe(28);
+    });
+
+    it('must not award ping points when latency sample is missing (ping=0)', () => {
+      // Great DL + UL but no valid ping → 40 + 30 + 0 = 70, not 100
+      expect(calcScore(100, 40, 0)).toBe(70);
+      expect(calcScore(100, 40, null)).toBe(70);
+      expect(calcScore(100, 40, undefined)).toBe(70);
     });
   });
 
@@ -36,7 +43,6 @@ describe('useSpeedTest helper functions', () => {
         { speed: 100 },
         { speed: 100 },
       ];
-      // Standard deviation should be 0, cv = 0, stability = 100%
       expect(calcStability(stableSamples)).toBe(100);
     });
 
@@ -46,7 +52,6 @@ describe('useSpeedTest helper functions', () => {
         { speed: 100 },
         { speed: 10 },
       ];
-      // Variance/standard deviation is high, stability should be clamped to minimum 50%
       expect(calcStability(volatileSamples)).toBe(50);
     });
 
@@ -58,7 +63,6 @@ describe('useSpeedTest helper functions', () => {
         { speed: 'invalid' },
         { speed: 100 },
       ];
-      // Only the three 100 speed values should be counted, making it 100% stable
       expect(calcStability(mixedSamples)).toBe(100);
     });
   });
