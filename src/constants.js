@@ -22,6 +22,8 @@ export const TIMEOUTS = Object.freeze({
   BUFFERBLOAT_REQ: 2_000,
   DOWNLOAD_MAX: 12_000,
   UPLOAD_MAX: 12_000,
+  /** Hard cap for a single XHR transfer (loops are aborted at *_MAX anyway). */
+  TRANSFER_MAX: 15_000,
   NETWORK_INFO: 3_000,
   PAUSE_BETWEEN: 800,
 });
@@ -29,29 +31,23 @@ export const TIMEOUTS = Object.freeze({
 // ─── Test parameters ─────────────────────────────────────────────────────────
 
 export const TEST = Object.freeze({
+  /** Parallel transfers — below every engine's 6-per-host connection limit. */
   CONNECTIONS: 4,
+  /** Byte counters are sampled on this timer, never per network chunk. */
   PROGRESS_INTERVAL: 100,
-  PING_SAMPLES: 8,
-  PING_WARMUP: 1,
-  /** Progressive download payload sizes (bytes) — Cloudflare __down?bytes=N */
-  DOWNLOAD_SIZES: Object.freeze([
-    1_000_000,   // 1 MB  — warm TCP / early estimate
-    5_000_000,   // 5 MB
-    25_000_000,  // 25 MB
-    50_000_000,  // 50 MB — saturate high-bandwidth links
-  ]),
-  UPLOAD_INITIAL_CHUNK: 256 * 1024,
-  UPLOAD_MIN_CHUNK: 64 * 1024,
-  UPLOAD_MAX_CHUNK: 2 * 1024 * 1024,
-  /** Discard first N seconds of transfer for TCP window warmup */
-  WARMUP_MS: 1_000,
-  /** Use last portion of progress samples for final Mbps (stability) */
-  FINAL_SAMPLE_RATIO: 0.35,
-  FINAL_MIN_SAMPLES: 4,
-  /** Early-exit when post-warmup samples are stable */
-  EARLY_EXIT_MIN_MS: 4_000,
-  EARLY_EXIT_MIN_SAMPLES: 12,
-  EARLY_EXIT_CV: 0.08,
+  PING_SAMPLES: 10,
+  /** Requests that open the connection (DNS/TCP/TLS) and are discarded. */
+  PING_WARMUP: 2,
+  /** Each parallel loop steps up one size per completed request and down one after a failure (bytes). */
+  DOWNLOAD_SIZES: Object.freeze([1_000_000, 5_000_000, 10_000_000]),
+  UPLOAD_SIZES: Object.freeze([256 * 1024, 1024 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024]),
+  /** No live reading until the transfer has run this long. */
+  MIN_WINDOW_MS: 600,
+  /** Stop early once this long into the transfer and the reading is steady. */
+  EARLY_EXIT_MIN_MS: 6_000,
+  EARLY_EXIT_MIN_SAMPLES: 20,
+  /** Max (max-min)/max spread of the last EARLY_EXIT_MIN_SAMPLES readings. */
+  EARLY_EXIT_SPREAD: 0.05,
 });
 
 // ─── Gauge geometry & scale ───────────────────────────────────────────────────
