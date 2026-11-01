@@ -31,6 +31,28 @@ const useHaptics = (status) => {
   }, [status]);
 };
 
+/** Typing targets and controls handle their own keys; shortcuts never steal them. */
+const ownsKeys = (el) => !!el?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], button, a[href], [role="dialog"]');
+
+/**
+ * Space / Enter start a test when ready; Esc cancels a running one.
+ * Ignored while the history sheet is open or a control has focus.
+ */
+const useShortcuts = ({ canStart, running, blocked, start, cancel }) => {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.defaultPrevented || e.repeat || e.altKey || e.ctrlKey || e.metaKey || blocked) return;
+      if (e.key === 'Escape' && running) { e.preventDefault(); cancel(); return; }
+      if ((e.key === ' ' || e.key === 'Enter') && canStart && !ownsKeys(e.target)) {
+        e.preventDefault();
+        start();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [canStart, running, blocked, start, cancel]);
+};
+
 const Result = ({ label, value, ul, ready }) => (
   <div className={`result${ul ? ' ul' : ''}${ready ? ' ready' : ''}`}>
     <span className="result-label">{ul ? '↑' : '↓'} {label}</span>
@@ -69,6 +91,8 @@ export default function App() {
   const lastRun = isFinished ? history[0] : null;
 
   const start = useCallback(() => { setNerd(false); runTest(); }, [runTest]);
+  const canStart = status === STATUS.IDLE || isFinished || isError;
+  useShortcuts({ canStart, running: isRunning, blocked: sheetOpen, start, cancel: stopTest });
 
   const share = useCallback(async (run) => {
     const say = (msg) => {
@@ -141,6 +165,11 @@ export default function App() {
           >
             {isFinished ? 'Again' : isError ? 'Try again' : 'Start'}
           </button>
+        )}
+        {canStart && !sheetOpen && (
+          <p className="kbd-hint" aria-hidden="true">
+            Press Space to {isFinished || isError ? 'run again' : 'start'}
+          </p>
         )}
 
         <HistorySheet

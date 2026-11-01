@@ -36,11 +36,12 @@ is faster than 200 Mbps, only the last label moves (250, 300, 400 … 10 000).
 - Nerd stats: raw values only. Endpoints, Cloudflare edge, protocol,
   streams, timings, sample counts and data used. Anything unknown is left out
   or marked as such.
+- Responsive layout. On phones the button sits at the bottom, within thumb reach. On desktop the meter scales with the window, and the meter, results and button form one centred group.
 - Installable PWA with an offline shell. A new version is applied only while
   idle, or when you tap "reload" after a test. It never interrupts a run.
 - Accessible:
   - phase and result are announced to screen readers
-  - full keyboard use with visible focus
+  - full keyboard use with visible focus. **Space** or **Enter** starts a test and **Esc** cancels one. A small hint shows on devices with a mouse.
   - the history sheet is a proper dialog (focus trap, Esc closes)
   - text contrast meets WCAG AA
   - reduced motion is respected
