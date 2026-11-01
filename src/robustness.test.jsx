@@ -82,3 +82,42 @@ describe('production robustness', () => {
     expect(screen.queryByRole('button', { name: /Open history/i })).not.toBeInTheDocument();
   });
 });
+
+describe('keyboard shortcuts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    speedTestUtils.startSpeedTest.mockImplementation((cb) => { cb.onStatus('downloading'); return new Promise(() => {}); });
+  });
+
+  it('Space starts a test when idle and Esc cancels it', () => {
+    render(<App />);
+    fireEvent.keyDown(document.body, { key: ' ' });
+    expect(speedTestUtils.startSpeedTest).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /Cancel speed test/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: ' ' }); // running: ignored
+    expect(speedTestUtils.startSpeedTest).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(speedTestUtils.stopSpeedTest).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Start speed test/i })).toBeInTheDocument();
+  });
+
+  it('Enter starts too, but not when a control has focus or the sheet is open', () => {
+    window.localStorage.setItem(STORAGE.HISTORY, JSON.stringify([RUN]));
+    render(<App />);
+
+    const peek = screen.getByRole('button', { name: /Open history/i });
+    fireEvent.keyDown(peek, { key: 'Enter' }); // focused control owns the key
+    expect(speedTestUtils.startSpeedTest).not.toHaveBeenCalled();
+
+    fireEvent.click(peek);
+    fireEvent.keyDown(document.body, { key: ' ' }); // sheet open
+    expect(speedTestUtils.startSpeedTest).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' }); // closes the sheet
+
+    fireEvent.keyDown(document.body, { key: 'Enter' });
+    expect(speedTestUtils.startSpeedTest).toHaveBeenCalledTimes(1);
+  });
+});
