@@ -6,9 +6,10 @@
  * No business logic should live in App.jsx.
  */
 
-import { useReducer, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useReducer, useCallback, useEffect, useRef } from 'react';
 import { startSpeedTest, stopSpeedTest } from '../utils/speedTest.js';
-import { STATUS, LIMITS, STORAGE, SCORE_BANDS } from '../constants.js';
+import { STATUS, LIMITS } from '../constants.js';
+import { loadHistory, saveHistory, sanitizeRun } from '../utils/history.js';
 
 /**
  * @typedef {Object} Metrics
@@ -21,37 +22,6 @@ import { STATUS, LIMITS, STORAGE, SCORE_BANDS } from '../constants.js';
 
 /** @returns {Metrics} */
 const emptyMetrics = () => ({ ping: 0, jitter: 0, download: 0, upload: 0, loadedPing: 0 });
-
-/**
- * Calculate a 0–100 quality score from completed metrics.
- * @param {number} dl  download Mbps
- * @param {number} ul  upload Mbps
- * @param {number} ping ms
- * @returns {number}
- */
-export const calcScore = (dl, ul, ping) => {
-  // Require a real download sample — incomplete / failed tests score 0.
-  if (!dl || dl <= 0) return 0;
-  let s = 0;
-
-  if (dl >= SCORE_BANDS.DL.GREAT) s += 40;
-  else if (dl >= SCORE_BANDS.DL.OK) s += 25;
-  else if (dl >= SCORE_BANDS.DL.LOW) s += 10;
-
-  if (ul >= SCORE_BANDS.UL.GREAT) s += 30;
-  else if (ul >= SCORE_BANDS.UL.OK) s += 18;
-  else if (ul >= SCORE_BANDS.UL.LOW) s += 8;
-
-  // ping === 0 means "no valid latency sample" (failed/skipped), NOT perfect latency.
-  // Only award ping points when we have a positive measured RTT.
-  if (typeof ping === 'number' && ping > 0) {
-    if (ping <= SCORE_BANDS.PING.GREAT) s += 30;
-    else if (ping <= SCORE_BANDS.PING.OK) s += 20;
-    else if (ping <= SCORE_BANDS.PING.LOW) s += 10;
-  }
-
-  return s;
-};
 
 /**
  * Calculate standard deviation stability percentage from progress samples.
@@ -73,40 +43,7 @@ export const calcStability = (samples) => {
   return Math.max(50, Math.min(100, Math.round((1 - cv) * 100)));
 };
 
-/**
- * Safely parse history from localStorage.
- * @returns {Array<object>}
- */
-const loadHistory = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE.HISTORY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (r) =>
-        r &&
-        typeof r.date === 'string' &&
-        typeof r.download === 'number' &&
-        typeof r.upload === 'number' &&
-        typeof r.ping === 'number',
-    );
-  } catch {
-    return [];
-  }
-};
-
-/**
- * Persist history to localStorage.
- * @param {Array<object>} history
- */
-const saveHistory = (history) => {
-  try {
-    localStorage.setItem(STORAGE.HISTORY, JSON.stringify(history));
-  } catch {
-    // Quota exceeded or private-browsing restriction — fail silently.
-  }
-};
+export const OFFLINE_MESSAGE = 'You appear to be offline. Reconnect and try again.';
 
 const initialState = {
   status: STATUS.IDLE,
@@ -114,7 +51,7 @@ const initialState = {
   displaySpeed: 0,
   dlData: [],
   ulData: [],
-  history: loadHistory(),
+  history: [],
   phaseProgress: 0,
   errorMessage: null,
 };
@@ -176,7 +113,7 @@ const reducer = (state, action) => {
     }
     case 'UL_COMPLETE': {
       const { speed, loadedPing, historyEntry } = action.payload;
-      const newHistory = [historyEntry, ...state.history].slice(0, LIMITS.MAX_HISTORY);
+      const newHistory = [sanitizeRun(historyEntry), ...state.history].filter(Boolean).slice(0, LIMITS.MAX_HISTORY);
       saveHistory(newHistory);
       return {
         ...state,
@@ -217,7 +154,7 @@ const canStart = (status) =>
   status === STATUS.IDLE || status === STATUS.FINISHED || status === STATUS.ERROR;
 
 const useSpeedTest = () => {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(reducer, initialState, (s) => ({ ...s, history: loadHistory() }));
   const {
     status, metrics, displaySpeed,
     dlData, ulData, history, phaseProgress, errorMessage,
@@ -233,28 +170,39 @@ const useSpeedTest = () => {
 
   useEffect(() => () => stopSpeedTest(), []);
 
-  // Reflect browser offline events into error state when idle
+  // Offline: abort a running test cleanly and say so; when the connection
+  // returns, clear the offline message so Start is ready again.
   useEffect(() => {
     const onOffline = () => {
-      if (canStart(stateRef.current.status) && stateRef.current.status !== STATUS.FINISHED) {
-        dispatch({
-          type: 'SET_ERROR',
-          payload: 'You appear to be offline. Reconnect and try again.',
-        });
+      const { status: st } = stateRef.current;
+      if (st === STATUS.FINISHED) return;
+      if (!canStart(st)) stopSpeedTest();
+      dispatch({
+        type: 'SET_ERROR',
+        payload: canStart(st)
+          ? OFFLINE_MESSAGE
+          : 'Connection lost during the test. Reconnect and try again.',
+      });
+    };
+    const onOnline = () => {
+      const { status: st, errorMessage: msg } = stateRef.current;
+      if (st === STATUS.ERROR && (msg === OFFLINE_MESSAGE || msg?.startsWith('Connection lost'))) {
+        dispatch({ type: 'STOP' });
       }
     };
     window.addEventListener('offline', onOffline);
-    return () => window.removeEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
   }, []);
 
   const runTest = useCallback(() => {
     if (!canStart(stateRef.current.status)) return;
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      dispatch({
-        type: 'SET_ERROR',
-        payload: 'You appear to be offline. Reconnect and try again.',
-      });
+      dispatch({ type: 'SET_ERROR', payload: OFFLINE_MESSAGE });
       return;
     }
 
@@ -317,14 +265,6 @@ const useSpeedTest = () => {
     status !== STATUS.FINISHED &&
     status !== STATUS.ERROR;
 
-  const score = useMemo(
-    () => calcScore(metrics.download, metrics.upload, metrics.ping),
-    [metrics],
-  );
-
-  const dlStability = useMemo(() => calcStability(dlData), [dlData]);
-  const ulStability = useMemo(() => calcStability(ulData), [ulData]);
-
   return {
     status,
     metrics,
@@ -333,9 +273,6 @@ const useSpeedTest = () => {
     ulData,
     history,
     isRunning,
-    score,
-    dlStability,
-    ulStability,
     phaseProgress,
     errorMessage,
     setProvider,

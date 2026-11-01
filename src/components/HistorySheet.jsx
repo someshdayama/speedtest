@@ -10,6 +10,7 @@ import { verdictFor } from '../utils/verdict.js';
 import { pingLevel, jitterLevel } from '../utils/levels.js';
 
 const SWIPE = 28;
+const FOCUSABLE = 'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 const fmt = (n) => (n > 0 ? (n >= 100 ? n.toFixed(0) : n.toFixed(1)) : '–');
 const when = (iso) => {
   const d = new Date(iso);
@@ -73,18 +74,40 @@ const Report = ({ run, env, onBack, onShare }) => {
  */
 const HistorySheet = memo(({ history, open, onOpenChange, onClear, onShare, env, sessionStart, hidden = false }) => {
   const [selected, setSelected] = useState(null);
+  const [confirming, setConfirming] = useState(false);
   const sheetRef = useRef(null);
-  const close = () => { onOpenChange(false); setSelected(null); };
+  const peekRef = useRef(null);
+  const wasOpen = useRef(false);
+  const close = () => { onOpenChange(false); setSelected(null); setConfirming(false); };
+  const closeRef = useRef(close);
+  useEffect(() => { closeRef.current = close; });
   const peekSwipe = useSwipe(() => onOpenChange(true), null);
   const headSwipe = useSwipe(null, close);
 
+  // Dialog behaviour: focus moves in on open, Tab stays inside, Esc closes,
+  // and focus returns to the History handle afterwards.
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      if (wasOpen.current) peekRef.current?.focus();
+      wasOpen.current = false;
+      return undefined;
+    }
+    wasOpen.current = true;
     sheetRef.current?.focus();
-    const onKey = (e) => { if (e.key === 'Escape') onOpenChange(false); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== 'Tab' || !sheetRef.current) return;
+      const items = [...sheetRef.current.querySelectorAll(FOCUSABLE)];
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === sheetRef.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (active === last || !sheetRef.current.contains(active))) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onOpenChange]);
+  }, [open]);
 
   if (!history.length) return null;
   const run = selected != null ? history[selected] : null;
@@ -94,6 +117,7 @@ const HistorySheet = memo(({ history, open, onOpenChange, onClear, onShare, env,
       {!open && !hidden && (
         <button
           type="button"
+          ref={peekRef}
           className="sheet-peek"
           onClick={() => onOpenChange(true)}
           {...peekSwipe}
@@ -111,14 +135,14 @@ const HistorySheet = memo(({ history, open, onOpenChange, onClear, onShare, env,
         className={`sheet${open ? ' is-open' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-label="History"
+        aria-labelledby="history-title"
         tabIndex={-1}
         inert={!open}
       >
         <header className="sheet-head" {...headSwipe}>
           <span className="grabber" aria-hidden="true" />
           <div className="sheet-title">
-            <h2>History</h2>
+            <h2 id="history-title">History</h2>
             <button type="button" className="text-btn" onClick={close} aria-label="Close history">Close</button>
           </div>
         </header>
@@ -145,8 +169,13 @@ const HistorySheet = memo(({ history, open, onOpenChange, onClear, onShare, env,
                   );
                 })}
               </ul>
-              <button type="button" className="text-btn danger" onClick={() => { onClear(); close(); }}>
-                Clear history
+              <button
+                type="button"
+                className="text-btn danger"
+                onClick={() => { if (confirming) { onClear(); close(); } else setConfirming(true); }}
+                onBlur={() => setConfirming(false)}
+              >
+                {confirming ? 'Tap again to delete all runs' : 'Clear history'}
               </button>
             </>
           )}

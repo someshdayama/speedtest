@@ -13,6 +13,7 @@
  */
 
 import { ENDPOINTS, TIMEOUTS, TEST, MSG, STATUS } from '../constants.js';
+import { backoffMs, sleep } from './retry.js';
 
 // ─── Shared abort ─────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ const stableMbps = (samples) => {
 };
 
 const roundMbps = (n) => Math.round(n * 10) / 10;
+
 
 /**
  * True when recent Mbps samples are stable enough to stop early.
@@ -270,6 +272,7 @@ const measureDownload = async (onProgress, onPhaseProgress) => {
   const runConnection = async (index) => {
     const conn = conns[index];
 
+    let failures = 0;
     while (!isDone && performance.now() < deadline && !isAborted()) {
       const sizeIdx = Math.min(conn.sizeIndex, TEST.DOWNLOAD_SIZES.length - 1);
       const bytes = TEST.DOWNLOAD_SIZES[sizeIdx];
@@ -279,7 +282,13 @@ const measureDownload = async (onProgress, onPhaseProgress) => {
           cache: 'no-store',
           signal: abortController.signal,
         });
+        // Never count an error page as throughput.
+        if (!res.ok) {
+          res.body?.cancel().catch(() => {});
+          throw new Error(`Download HTTP ${res.status}`);
+        }
         if (!res.body) break;
+        failures = 0;
 
         const reader = res.body.getReader();
         try {
@@ -340,14 +349,14 @@ const measureDownload = async (onProgress, onPhaseProgress) => {
         }
       } catch {
         if (isDone || isAborted()) break;
-        await new Promise((r) => setTimeout(r, 80));
+        await sleep(backoffMs(failures, 80), abortController.signal);
+        failures += 1;
       }
     }
   };
 
   const tasks = Array.from({ length: TEST.CONNECTIONS }, (_, i) => runConnection(i));
-  const timeout = new Promise((r) => setTimeout(r, TIMEOUTS.DOWNLOAD_MAX));
-  await Promise.race([Promise.all(tasks), timeout]);
+  await Promise.race([Promise.all(tasks), sleep(TIMEOUTS.DOWNLOAD_MAX, abortController.signal)]);
 
   isDone = true;
   abortController.abort();
@@ -496,6 +505,7 @@ const measureUpload = async (onProgress, onPhaseProgress) => {
   const runConnection = async (index) => {
     const conn = conns[index];
 
+    let failures = 0;
     while (!isDone && performance.now() < deadline && !isAborted()) {
       const currentChunkSize = conn.chunkSize;
       const payload = maxPayload.subarray(0, currentChunkSize);
@@ -522,6 +532,7 @@ const measureUpload = async (onProgress, onPhaseProgress) => {
           reportProgress();
         });
 
+        failures = 0;
         const duration = performance.now() - t0;
         if (duration < 100) {
           conn.chunkSize = Math.min(conn.chunkSize * 2, TEST.UPLOAD_MAX_CHUNK);
@@ -530,14 +541,14 @@ const measureUpload = async (onProgress, onPhaseProgress) => {
         }
       } catch (err) {
         if (isDone || isAborted() || err?.name === 'AbortError') break;
-        await new Promise((r) => setTimeout(r, 100));
+        await sleep(backoffMs(failures, 100), abortController.signal);
+        failures += 1;
       }
     }
   };
 
   const tasks = Array.from({ length: TEST.CONNECTIONS }, (_, i) => runConnection(i));
-  const timeout = new Promise((r) => setTimeout(r, TIMEOUTS.UPLOAD_MAX));
-  await Promise.race([Promise.all(tasks), timeout]);
+  await Promise.race([Promise.all(tasks), sleep(TIMEOUTS.UPLOAD_MAX, abortController.signal)]);
 
   isDone = true;
   abortController.abort();
@@ -604,7 +615,7 @@ self.onmessage = async (e) => {
     );
     post({ type: MSG.DOWNLOAD_COMPLETE, speed: dl.speed, loadedPing: dl.loadedPing });
 
-    await new Promise((r) => setTimeout(r, TIMEOUTS.PAUSE_BETWEEN));
+    await sleep(TIMEOUTS.PAUSE_BETWEEN, runAbort.signal);
     throwIfAborted();
 
     // 3 — Upload

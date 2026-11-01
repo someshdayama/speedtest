@@ -1,11 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200..700&display=swap');
+/* Inter (variable, latin subset) is self-hosted: no third-party request, no render-blocking CSS. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url('/fonts/inter-v20-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
   /* White on black. Amber = upload / warning, red = error / bad. */
   --bg: #000;
   --text-1: #fff;
   --text-2: rgba(255, 255, 255, 0.62);
-  --text-3: rgba(255, 255, 255, 0.36);
+  --text-3: rgba(255, 255, 255, 0.5); /* ≥ 4.5:1 on black (WCAG AA) */
   --line: rgba(255, 255, 255, 0.1);
   --faint: rgba(255, 255, 255, 0.08);
   --amber: #f5a524;
