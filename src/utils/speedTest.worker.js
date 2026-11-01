@@ -150,10 +150,9 @@ const bufferbloat = (() => {
 
 /**
  * Measure RTT + jitter from multiple samples (warmup discarded).
- * @param {(pct: number) => void} onPhaseProgress
  * @returns {Promise<{ ping: number, jitter: number }>}
  */
-const measurePing = async (onPhaseProgress) => {
+const measurePing = async () => {
   const samples = [];
   const opts = { method: 'GET', cache: 'no-store' };
   const total = TEST.PING_SAMPLES;
@@ -177,7 +176,6 @@ const measurePing = async (onPhaseProgress) => {
       if (err?.name === 'AbortError' && isAborted()) throw err;
       // transient — continue
     }
-    onPhaseProgress(Math.round(((i + 1) / total) * 100));
   }
 
   if (samples.length === 0) {
@@ -240,9 +238,8 @@ const calculateAggregateSpeed = (conns, now) => {
 /**
  * Parallel download with progressive payload sizes for more stable Mbps.
  * @param {(speed: number) => void} onProgress
- * @param {(pct: number) => void} onPhaseProgress
  */
-const measureDownload = async (onProgress, onPhaseProgress) => {
+const measureDownload = async (onProgress) => {
   const deadline = performance.now() + TIMEOUTS.DOWNLOAD_MAX;
   let isDone = false;
   let lastReport = performance.now();
@@ -324,8 +321,6 @@ const measureDownload = async (onProgress, onPhaseProgress) => {
                 null,
               );
               const elapsed = transferStart !== null ? now - transferStart : 0;
-              const pct = Math.min(99, Math.round((elapsed / TIMEOUTS.DOWNLOAD_MAX) * 100));
-              onPhaseProgress(pct);
               lastReport = now;
 
               // Progressive early-exit once TCP is warm and Mbps has stabilized
@@ -369,7 +364,6 @@ const measureDownload = async (onProgress, onPhaseProgress) => {
   const live = calculateAggregateSpeed(conns, now);
   const speed = roundMbps(stableMbps(progressSamples.length ? progressSamples : [live]));
   const loadedPing = bufferbloat.stop();
-  onPhaseProgress(100);
 
   if (speed <= 0 && conns.every((c) => c.bytesLoaded === 0)) {
     const err = new Error('Download test failed. The endpoint may be blocked or unreachable.');
@@ -450,9 +444,8 @@ const xhrUploadChunk = (payload, signal, onBytes) =>
 /**
  * Parallel upload with adaptive chunk sizing + real XHR upload progress.
  * @param {(speed: number) => void} onProgress
- * @param {(pct: number) => void} onPhaseProgress
  */
-const measureUpload = async (onProgress, onPhaseProgress) => {
+const measureUpload = async (onProgress) => {
   const deadline = performance.now() + TIMEOUTS.UPLOAD_MAX;
   let isDone = false;
   let lastReport = performance.now();
@@ -491,7 +484,6 @@ const measureUpload = async (onProgress, onPhaseProgress) => {
       null,
     );
     const elapsed = transferStart !== null ? now - transferStart : 0;
-    onPhaseProgress(Math.min(99, Math.round((elapsed / TIMEOUTS.UPLOAD_MAX) * 100)));
     lastReport = now;
 
     if (
@@ -561,7 +553,6 @@ const measureUpload = async (onProgress, onPhaseProgress) => {
   const live = calculateAggregateSpeed(conns, now);
   const speed = roundMbps(stableMbps(progressSamples.length ? progressSamples : [live]));
   const loadedPing = bufferbloat.stop();
-  onPhaseProgress(100);
 
   if (speed <= 0 && conns.every((c) => c.bytesLoaded === 0)) {
     const err = new Error('Upload test failed. The endpoint may be blocked or unreachable.');
@@ -589,7 +580,6 @@ self.onmessage = async (e) => {
   runAbort = new AbortController();
 
   const post = (payload) => self.postMessage(payload);
-  const postPhase = (pct) => post({ type: MSG.PHASE_PROGRESS, progress: pct });
 
   try {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -603,16 +593,13 @@ self.onmessage = async (e) => {
 
     // 1 — Latency
     post({ type: MSG.STATUS, message: STATUS.PINGING });
-    postPhase(0);
-    const { ping, jitter } = await measurePing(postPhase);
+    const { ping, jitter } = await measurePing();
     post({ type: MSG.PING_RESULT, ping, jitter });
 
     // 2 — Download
     post({ type: MSG.STATUS, message: STATUS.DOWNLOADING });
-    postPhase(0);
     const dl = await measureDownload(
       (speed) => post({ type: MSG.DOWNLOAD_PROGRESS, speed }),
-      postPhase,
     );
     post({ type: MSG.DOWNLOAD_COMPLETE, speed: dl.speed, loadedPing: dl.loadedPing });
 
@@ -621,15 +608,12 @@ self.onmessage = async (e) => {
 
     // 3 — Upload
     post({ type: MSG.STATUS, message: STATUS.UPLOADING });
-    postPhase(0);
     const ul = await measureUpload(
       (speed) => post({ type: MSG.UPLOAD_PROGRESS, speed }),
-      postPhase,
     );
     post({ type: MSG.UPLOAD_COMPLETE, speed: ul.speed, loadedPing: ul.loadedPing });
 
     post({ type: MSG.STATUS, message: STATUS.FINISHED });
-    postPhase(100);
   } catch (err) {
     if (err?.name === 'AbortError' || isAborted()) {
       // Silent — main thread handles cancel UI

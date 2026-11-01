@@ -79,7 +79,7 @@ The site is deployed from the CLI with a prebuilt `dist/`. `netlify.toml`
 provides:
 
 - the Content-Security-Policy, which only allows connections to Cloudflare,
-  ipinfo.io and ipify
+  ipinfo.io (ISP name)
 - `nosniff`, Referrer-Policy, Permissions-Policy, frame denial and HSTS
 - long-lived caching for hashed assets
 - `no-cache` for `index.html`, `sw.js` and the manifest

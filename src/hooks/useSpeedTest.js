@@ -43,7 +43,7 @@ export const calcStability = (samples) => {
   return Math.max(50, Math.min(100, Math.round((1 - cv) * 100)));
 };
 
-export const OFFLINE_MESSAGE = 'You appear to be offline. Reconnect and try again.';
+const OFFLINE_MESSAGE = 'You appear to be offline. Reconnect and try again.';
 
 const initialState = {
   status: STATUS.IDLE,
@@ -52,7 +52,6 @@ const initialState = {
   dlData: [],
   ulData: [],
   history: [],
-  phaseProgress: 0,
   errorMessage: null,
 };
 
@@ -66,13 +65,10 @@ const reducer = (state, action) => {
               metrics: emptyMetrics(),
         dlData: [],
         ulData: [],
-        phaseProgress: 0,
         errorMessage: null,
       };
     case 'SET_STATUS':
       return { ...state, status: action.payload, errorMessage: null };
-    case 'SET_PHASE_PROGRESS':
-      return { ...state, phaseProgress: action.payload };
     case 'PING_RESULT': {
       const { ping, jitter } = action.payload;
       return {
@@ -123,7 +119,6 @@ const reducer = (state, action) => {
           loadedPing: loadedPing || state.metrics.loadedPing,
         },
         history: newHistory,
-        phaseProgress: 100,
         displaySpeed: speed,
       };
     }
@@ -132,7 +127,6 @@ const reducer = (state, action) => {
         ...state,
         status: STATUS.ERROR,
         errorMessage: action.payload || 'Test failed. Please try again.',
-        phaseProgress: 0,
       };
     case 'CLEAR_HISTORY':
       saveHistory([]);
@@ -141,7 +135,6 @@ const reducer = (state, action) => {
       return {
         ...state,
         status: STATUS.IDLE,
-        phaseProgress: 0,
         errorMessage: null,
       };
     default:
@@ -157,7 +150,7 @@ const useSpeedTest = () => {
   const [state, dispatch] = useReducer(reducer, initialState, (s) => ({ ...s, history: loadHistory() }));
   const {
     status, metrics, displaySpeed,
-    dlData, ulData, history, phaseProgress, errorMessage,
+    dlData, ulData, history, errorMessage,
   } = state;
 
   const stateRef = useRef(state);
@@ -211,7 +204,6 @@ const useSpeedTest = () => {
 
     startSpeedTest({
       onStatus: (st) => dispatch({ type: 'SET_STATUS', payload: st }),
-      onPhaseProgress: (pct) => dispatch({ type: 'SET_PHASE_PROGRESS', payload: pct }),
       onPing: (ping, jitter) => dispatch({ type: 'PING_RESULT', payload: { ping, jitter } }),
       onDownloadProgress: (speed) =>
         dispatch({ type: 'DL_PROGRESS', payload: { speed, time: Date.now() - t0 } }),
@@ -273,7 +265,6 @@ const useSpeedTest = () => {
     ulData,
     history,
     isRunning,
-    phaseProgress,
     errorMessage,
     setProvider,
     runTest,

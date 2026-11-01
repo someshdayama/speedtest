@@ -24,7 +24,6 @@ let activeWorker = null;
  * @property {(speed: number, loadedPing: number) => void} onDownloadComplete
  * @property {(speed: number)   => void} onUploadProgress
  * @property {(speed: number, loadedPing: number) => void} onUploadComplete
- * @property {(progress: number) => void} [onPhaseProgress]
  * @property {(err: Error) => void} onError
  */
 
@@ -58,9 +57,6 @@ export const startSpeedTest = (callbacks) => {
         break;
       case MSG.UPLOAD_COMPLETE:
         callbacks.onUploadComplete(data.speed, data.loadedPing ?? 0);
-        break;
-      case MSG.PHASE_PROGRESS:
-        callbacks.onPhaseProgress?.(data.progress ?? 0);
         break;
       case MSG.ERROR: {
         const err = new Error(data.message ?? 'Worker error');

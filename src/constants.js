@@ -10,8 +10,8 @@ export const ENDPOINTS = Object.freeze({
   /** Base download URL — append bytes=N for progressive payload sizes */
   DOWNLOAD: 'https://speed.cloudflare.com/__down',
   UPLOAD: 'https://speed.cloudflare.com/__up',
-  IP_PRIMARY: 'https://ipinfo.io/json',
-  IP_FALLBACK: 'https://api.ipify.org?format=json',
+  /** ISP name for Nerd stats */
+  ISP: 'https://ipinfo.io/json',
 });
 
 // ─── Timing (ms) ─────────────────────────────────────────────────────────────
@@ -99,7 +99,6 @@ export const MSG = Object.freeze({
   DOWNLOAD_COMPLETE: 'downloadComplete',
   UPLOAD_PROGRESS: 'uploadProgress',
   UPLOAD_COMPLETE: 'uploadComplete',
-  PHASE_PROGRESS: 'phaseProgress',
   ERROR: 'error',
 });
 
@@ -123,9 +122,7 @@ export const STORAGE = Object.freeze({
 // ─── Score thresholds ─────────────────────────────────────────────────────────
 
 export const SCORE_BANDS = Object.freeze({
-  DL: { GREAT: 100, OK: 25, LOW: 5 },
-  UL: { GREAT: 20, OK: 5, LOW: 1 },
-  PING: { GREAT: 20, OK: 50, LOW: 100 },
+  PING: { OK: 50, LOW: 100 },
 });
 
 // ─── Human-readable phase labels ──────────────────────────────────────────────
