@@ -112,30 +112,11 @@ const initialState = {
   status: STATUS.IDLE,
   metrics: emptyMetrics(),
   displaySpeed: 0,
-  gaugeMax: LIMITS.GAUGE_INITIAL_MAX,
   dlData: [],
   ulData: [],
   history: loadHistory(),
   phaseProgress: 0,
   errorMessage: null,
-};
-
-const updateSpeedState = (state, speed) => {
-  let { gaugeMax } = state;
-  if (speed > gaugeMax * LIMITS.GAUGE_SCALE_UP) {
-    const requiredMax = speed / LIMITS.GAUGE_SCALE_UP;
-    const GAUGE_STEPS = [100, 150, 250, 500, 1000, 2000, 5000];
-    let stepMax = GAUGE_STEPS.find((step) => step >= requiredMax);
-    if (!stepMax) {
-      let fallbackMax = GAUGE_STEPS[GAUGE_STEPS.length - 1];
-      while (speed > fallbackMax * LIMITS.GAUGE_SCALE_UP) {
-        fallbackMax *= 2;
-      }
-      stepMax = fallbackMax;
-    }
-    gaugeMax = stepMax;
-  }
-  return { displaySpeed: speed, gaugeMax };
 };
 
 const reducer = (state, action) => {
@@ -145,8 +126,7 @@ const reducer = (state, action) => {
         ...state,
         status: STATUS.PINGING,
         displaySpeed: 0,
-        gaugeMax: LIMITS.GAUGE_INITIAL_MAX,
-        metrics: emptyMetrics(),
+              metrics: emptyMetrics(),
         dlData: [],
         ulData: [],
         phaseProgress: 0,
@@ -161,7 +141,7 @@ const reducer = (state, action) => {
       return {
         ...state,
         metrics: { ...state.metrics, ping, jitter },
-        ...updateSpeedState(state, ping),
+        displaySpeed: ping,
       };
     }
     case 'DL_PROGRESS': {
@@ -170,7 +150,7 @@ const reducer = (state, action) => {
         ...state,
         metrics: { ...state.metrics, download: speed },
         dlData: [...state.dlData, { time, speed }],
-        ...updateSpeedState(state, speed),
+        displaySpeed: speed,
       };
     }
     case 'DL_COMPLETE': {
@@ -182,7 +162,7 @@ const reducer = (state, action) => {
           download: speed,
           loadedPing: loadedPing || state.metrics.loadedPing,
         },
-        ...updateSpeedState(state, speed),
+        displaySpeed: speed,
       };
     }
     case 'UL_PROGRESS': {
@@ -191,7 +171,7 @@ const reducer = (state, action) => {
         ...state,
         metrics: { ...state.metrics, upload: speed },
         ulData: [...state.ulData, { time, speed }],
-        ...updateSpeedState(state, speed),
+        displaySpeed: speed,
       };
     }
     case 'UL_COMPLETE': {
@@ -207,7 +187,7 @@ const reducer = (state, action) => {
         },
         history: newHistory,
         phaseProgress: 100,
-        ...updateSpeedState(state, speed),
+        displaySpeed: speed,
       };
     }
     case 'SET_ERROR':
@@ -239,7 +219,7 @@ const canStart = (status) =>
 const useSpeedTest = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
-    status, metrics, displaySpeed, gaugeMax,
+    status, metrics, displaySpeed,
     dlData, ulData, history, phaseProgress, errorMessage,
   } = state;
 
@@ -349,7 +329,6 @@ const useSpeedTest = () => {
     status,
     metrics,
     displaySpeed,
-    gaugeMax,
     dlData,
     ulData,
     history,

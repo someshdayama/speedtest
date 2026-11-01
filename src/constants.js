@@ -54,35 +54,36 @@ export const TEST = Object.freeze({
   EARLY_EXIT_CV: 0.08,
 });
 
-// ─── Gauge geometry ───────────────────────────────────────────────────────────
+// ─── Gauge geometry & scale ───────────────────────────────────────────────────
 //
-// Coordinate system used by polarToXY:
-//   0°   → top (north)
-//   90°  → right (east)
-//   180° → bottom (south)
-//   270° → left (west)
+// Coordinate system used by toXY:
+//   0°   → top (north), 90° → right, 180° → bottom, 270° → left
 //
-// Arc: symmetric about vertical axis, gap at the bottom.
+// Arc: symmetric about the vertical axis, gap at the bottom.
 //   START = 220°, SWEEP = 280°, END = 140°
 //
 export const GAUGE = Object.freeze({
-  WIDTH: 280,
-  HEIGHT: 200,
-  CX: 140,
-  CY: 110,
-  RADIUS: 95,
+  WIDTH: 300,
+  HEIGHT: 290,
+  CX: 150,
+  CY: 148,
+  /** Inner ring = download (white), outer ring = upload (amber). */
+  R_DL: 102,
+  R_UL: 117,
+  RING_WIDTH: 7,
   START_ANGLE: 220,
   SWEEP: 280,
-  TICKS: [0, 25, 50, 75, 100],
+  /** Fixed scale labels (Mbps), equally spaced. Only the last one can grow. */
+  STOPS: Object.freeze([0, 5, 10, 25, 50, 100, 150, 200]),
+  /** Candidates for the last label once the peak passes 200 Mbps. */
+  OVERFLOW_STEPS: Object.freeze([250, 300, 400, 500, 750, 1000, 1500, 2000, 2500, 5000, 10000]),
+  MINOR_TICKS: 4,
 });
 
 // ─── Application limits ───────────────────────────────────────────────────────
 
 export const LIMITS = Object.freeze({
   MAX_HISTORY: 50,
-  GAUGE_SCALE_UP: 0.88,
-  GAUGE_SCALE_DOWN: 0.15,
-  GAUGE_INITIAL_MAX: 100,
 });
 
 // ─── Worker message types ─────────────────────────────────────────────────────
