@@ -5,11 +5,17 @@
  * Phases: ping → download → upload → finished
  * Uses Cloudflare public speed endpoints only (no private test server).
  *
- * Stability:
- *  - Progressive download payload sizes via __down?bytes=N
- *  - Parallel streams with TCP warmup discard
- *  - Final Mbps from trimmed mean of late progress samples
- *  - AbortController for mid-test cancel + timeouts
+ * Every number is computed the same way in every engine, from our own clock
+ * and byte counts (no Resource Timing, Server-Timing or navigator.connection):
+ *  - Ping: median time-to-response-headers over a warm connection.
+ *  - Download and upload: XHR with progress events. The browser accumulates
+ *    the bytes natively and reports totals, so there is no per-chunk
+ *    JavaScript (reading a fetch ReadableStream chunk by chunk in a worker is
+ *    slow in Safari, which under-reported download there). A timer samples
+ *    the running byte total. Requests stay small (≤10 MB) and step down after
+ *    a failure, since the endpoint rate-limits large bursts with 429s.
+ *  - Throughput = bytes moved over the most recent half of the transfer, so
+ *    TCP ramp-up is discarded however long a given network stack takes.
  */
 
 import { ENDPOINTS, TIMEOUTS, TEST, MSG, STATUS } from '../constants.js';
@@ -22,12 +28,14 @@ let runAbort = null;
 
 const isAborted = () => runAbort?.signal.aborted === true;
 
+const abortError = () => {
+  const err = new Error('Test aborted');
+  err.name = 'AbortError';
+  return err;
+};
+
 const throwIfAborted = () => {
-  if (isAborted()) {
-    const err = new Error('Test aborted');
-    err.name = 'AbortError';
-    throw err;
-  }
+  if (isAborted()) throw abortError();
 };
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
@@ -37,77 +45,47 @@ const appendCacheBuster = (url) => {
   return `${url}${separator}_=${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 };
 
-/**
- * @param {string} url
- * @param {RequestInit} options
- * @param {number} limitMs
- * @param {AbortSignal} [externalSignal]
- */
-const fetchWithTimeout = (url, options = {}, limitMs = TIMEOUTS.PING_REQUEST, externalSignal) => {
-  const controller = new AbortController();
-  const timerId = setTimeout(() => controller.abort(), limitMs);
-
-  const onExternalAbort = () => controller.abort();
-  if (externalSignal) {
-    if (externalSignal.aborted) controller.abort();
-    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
-  }
-
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => {
-      clearTimeout(timerId);
-      externalSignal?.removeEventListener('abort', onExternalAbort);
-    });
-};
-
-/**
- * Trimmed mean of the highest-stability late samples (drop outliers).
- * @param {number[]} samples
- * @returns {number}
- */
-const stableMbps = (samples) => {
-  const valid = samples.filter((v) => typeof v === 'number' && Number.isFinite(v) && v > 0);
-  if (valid.length === 0) return 0;
-  if (valid.length < TEST.FINAL_MIN_SAMPLES) {
-    return valid.reduce((a, b) => a + b, 0) / valid.length;
-  }
-
-  const start = Math.max(0, Math.floor(valid.length * (1 - TEST.FINAL_SAMPLE_RATIO)));
-  const window = valid.slice(start).sort((a, b) => a - b);
-
-  // Drop top/bottom 12.5% when enough samples
-  if (window.length >= 8) {
-    const trim = Math.floor(window.length * 0.125);
-    const trimmed = window.slice(trim, window.length - trim);
-    return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
-  }
-
-  return window.reduce((a, b) => a + b, 0) / window.length;
+const median = (values) => {
+  if (values.length === 0) return 0;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 };
 
 const roundMbps = (n) => Math.round(n * 10) / 10;
 
-
 /**
- * True when recent Mbps samples are stable enough to stop early.
- * @param {number[]} samples
- * @param {number} elapsedMs
+ * Time one tiny GET to the edge: request start → response headers.
+ * The body is drained afterwards, outside the timed span.
+ * @returns {Promise<number>} ms
  */
-const canEarlyExit = (samples, elapsedMs) => {
-  if (elapsedMs < TEST.EARLY_EXIT_MIN_MS) return false;
-  if (samples.length < TEST.EARLY_EXIT_MIN_SAMPLES) return false;
-  const window = samples.slice(-TEST.EARLY_EXIT_MIN_SAMPLES);
-  const mean = window.reduce((a, b) => a + b, 0) / window.length;
-  if (mean <= 0) return false;
-  const variance = window.reduce((sum, v) => sum + (v - mean) ** 2, 0) / window.length;
-  const cv = Math.sqrt(variance) / mean;
-  return cv <= TEST.EARLY_EXIT_CV;
+const timeRequest = async (limitMs, signal) => {
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(), limitMs);
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const t0 = performance.now();
+    const res = await fetch(appendCacheBuster(ENDPOINTS.PING), { cache: 'no-store', signal: controller.signal });
+    const ms = performance.now() - t0;
+    await res.arrayBuffer().catch(() => {});
+    if (!res.ok) throw new Error(`Ping HTTP ${res.status}`);
+    return ms;
+  } finally {
+    clearTimeout(timerId);
+    signal?.removeEventListener('abort', onAbort);
+  }
 };
 
+// ─── Loaded latency ───────────────────────────────────────────────────────────
 
-// ─── Bufferbloat ──────────────────────────────────────────────────────────────
-
-const bufferbloat = (() => {
+/**
+ * Latency probes while the download saturates the link. Only the download
+ * phase is probed: during upload, Chromium queues other requests behind its
+ * own upload pipeline (hundreds of ms on a link where WebKit shows none), so
+ * that number described the browser, not the network.
+ */
+const loadedLatency = (() => {
   let active = false;
   let samples = [];
   let timerId = null;
@@ -115,16 +93,8 @@ const bufferbloat = (() => {
   const tick = async () => {
     if (!active || isAborted()) return;
     try {
-      const t0 = performance.now();
-      const res = await fetchWithTimeout(
-        appendCacheBuster(ENDPOINTS.PING),
-        { method: 'GET', cache: 'no-store' },
-        TIMEOUTS.BUFFERBLOAT_REQ,
-        runAbort?.signal,
-      );
-      // Consume body so the connection isn't left hanging (HEAD returns 404 on this endpoint)
-      if (res.ok) await res.text().catch(() => {});
-      if (active) samples.push(Math.round(performance.now() - t0));
+      const ms = await timeRequest(TIMEOUTS.BUFFERBLOAT_REQ, runAbort?.signal);
+      if (active) samples.push(ms);
     } catch {
       // skip sample
     }
@@ -140,8 +110,7 @@ const bufferbloat = (() => {
     stop() {
       active = false;
       clearTimeout(timerId);
-      if (samples.length === 0) return 0;
-      return Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+      return Math.round(median(samples));
     },
   };
 })();
@@ -149,31 +118,20 @@ const bufferbloat = (() => {
 // ─── Ping ─────────────────────────────────────────────────────────────────────
 
 /**
- * Measure RTT + jitter from multiple samples (warmup discarded).
+ * RTT (median) + jitter (mean difference between consecutive samples).
+ * The first TEST.PING_WARMUP requests open the connection and are discarded.
  * @returns {Promise<{ ping: number, jitter: number }>}
  */
 const measurePing = async () => {
   const samples = [];
-  const opts = { method: 'GET', cache: 'no-store' };
-  const total = TEST.PING_SAMPLES;
 
-  for (let i = 0; i < total; i++) {
+  for (let i = 0; i < TEST.PING_WARMUP + TEST.PING_SAMPLES; i++) {
     throwIfAborted();
     try {
-      const t0 = performance.now();
-      const res = await fetchWithTimeout(
-        appendCacheBuster(ENDPOINTS.PING),
-        opts,
-        TIMEOUTS.PING_REQUEST,
-        runAbort?.signal,
-      );
-      // Consume body lightly so connection isn't left hanging
-      if (res.ok) await res.text().catch(() => {});
-      const rtt = Math.round(performance.now() - t0);
-      // Skip first sample(s) as DNS/TLS warmup
-      if (i >= TEST.PING_WARMUP) samples.push(rtt);
-    } catch (err) {
-      if (err?.name === 'AbortError' && isAborted()) throw err;
+      const ms = await timeRequest(TIMEOUTS.PING_REQUEST, runAbort?.signal);
+      if (i >= TEST.PING_WARMUP) samples.push(ms);
+    } catch {
+      if (isAborted()) throw abortError();
       // transient — continue
     }
   }
@@ -184,383 +142,208 @@ const measurePing = async () => {
     throw err;
   }
 
-  const avgPing = Math.round(samples.reduce((sum, s) => sum + s, 0) / samples.length);
-
   let jitter = 0;
   if (samples.length >= 2) {
     let sumDiffs = 0;
-    for (let i = 1; i < samples.length; i++) {
-      sumDiffs += Math.abs(samples[i] - samples[i - 1]);
-    }
+    for (let i = 1; i < samples.length; i++) sumDiffs += Math.abs(samples[i] - samples[i - 1]);
     jitter = Math.round((sumDiffs / (samples.length - 1)) * 10) / 10;
   }
 
-  return { ping: avgPing, jitter };
+  return { ping: Math.round(median(samples)), jitter };
 };
 
-const calculateAggregateSpeed = (conns, now) => {
-  let earliestActualStart = null;
-  let totalWarmedUpBytes = 0;
-  let earliestTransferStart = null;
-  let totalRawBytes = 0;
-  let warmedUpCount = 0;
-
-  for (let i = 0; i < conns.length; i++) {
-    const c = conns[i];
-    if (c.transferStart !== null) {
-      if (earliestTransferStart === null || c.transferStart < earliestTransferStart) {
-        earliestTransferStart = c.transferStart;
-      }
-      totalRawBytes += c.bytesLoaded;
-    }
-    if (c.warmupDone && c.actualStart !== null) {
-      warmedUpCount++;
-      if (earliestActualStart === null || c.actualStart < earliestActualStart) {
-        earliestActualStart = c.actualStart;
-      }
-      totalWarmedUpBytes += c.actualBytes;
-    }
-  }
-
-  let speed = 0;
-  if (warmedUpCount > 0 && earliestActualStart !== null) {
-    const elapsed = Math.max((now - earliestActualStart) / 1000, 0.05);
-    speed = ((totalWarmedUpBytes * 8) / elapsed) / 1_000_000;
-  } else if (earliestTransferStart !== null) {
-    const elapsed = Math.max((now - earliestTransferStart) / 1000, 0.05);
-    speed = ((totalRawBytes * 8) / elapsed) / 1_000_000;
-  }
-  return speed;
-};
-
-// ─── Download ─────────────────────────────────────────────────────────────────
+// ─── Transfers ────────────────────────────────────────────────────────────────
 
 /**
- * Parallel download with progressive payload sizes for more stable Mbps.
- * @param {(speed: number) => void} onProgress
+ * One XHR transfer. Reports byte deltas from progress events (download:
+ * response bytes received; upload: request bytes sent).
+ * @param {{ method: 'GET'|'POST', url: string, body?: Uint8Array, signal: AbortSignal,
+ *           onBytes: (delta: number) => void }} opts
  */
-const measureDownload = async (onProgress) => {
-  const deadline = performance.now() + TIMEOUTS.DOWNLOAD_MAX;
-  let isDone = false;
-  let lastReport = performance.now();
-  const abortController = new AbortController();
-  const progressSamples = [];
-
-  const onRunAbort = () => {
-    isDone = true;
-    abortController.abort();
-  };
-  runAbort?.signal.addEventListener('abort', onRunAbort, { once: true });
-
-  const conns = Array.from({ length: TEST.CONNECTIONS }, () => ({
-    bytesLoaded: 0,
-    transferStart: null,
-    actualStart: null,
-    actualBytes: 0,
-    warmupDone: false,
-    sizeIndex: 0,
-  }));
-
-  bufferbloat.start();
-
-  const downloadUrl = (bytes) =>
-    appendCacheBuster(`${ENDPOINTS.DOWNLOAD}?bytes=${bytes}`);
-
-  const runConnection = async (index) => {
-    const conn = conns[index];
-
-    let failures = 0;
-    while (!isDone && performance.now() < deadline && !isAborted()) {
-      const sizeIdx = Math.min(conn.sizeIndex, TEST.DOWNLOAD_SIZES.length - 1);
-      const bytes = TEST.DOWNLOAD_SIZES[sizeIdx];
-
-      try {
-        const res = await fetch(downloadUrl(bytes), {
-          cache: 'no-store',
-          signal: abortController.signal,
-        });
-        // Never count an error page as throughput.
-        if (!res.ok) {
-          res.body?.cancel().catch(() => {});
-          throw new Error(`Download HTTP ${res.status}`);
-        }
-        if (!res.body) break;
-        failures = 0;
-
-        const reader = res.body.getReader();
-        try {
-          while (!isDone && performance.now() < deadline && !isAborted()) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const now = performance.now();
-            conn.bytesLoaded += value.byteLength;
-
-            if (conn.transferStart === null && value.byteLength > 0) {
-              conn.transferStart = now;
-            }
-
-            if (conn.transferStart !== null && !conn.warmupDone) {
-              if (now - conn.transferStart >= TEST.WARMUP_MS) {
-                conn.warmupDone = true;
-                conn.actualStart = now;
-                conn.actualBytes = value.byteLength;
-              }
-            } else if (conn.warmupDone) {
-              conn.actualBytes += value.byteLength;
-            }
-
-            if (now - lastReport >= TEST.PROGRESS_INTERVAL) {
-              const aggregateSpeed = calculateAggregateSpeed(conns, now);
-              if (aggregateSpeed > 0) {
-                progressSamples.push(aggregateSpeed);
-                onProgress(roundMbps(aggregateSpeed));
-              }
-              const transferStart = conns.reduce(
-                (min, c) => (c.transferStart !== null && (min === null || c.transferStart < min) ? c.transferStart : min),
-                null,
-              );
-              const elapsed = transferStart !== null ? now - transferStart : 0;
-              lastReport = now;
-
-              // Progressive early-exit once TCP is warm and Mbps has stabilized
-              if (
-                conns.every((c) => c.warmupDone) &&
-                canEarlyExit(progressSamples, elapsed)
-              ) {
-                isDone = true;
-                abortController.abort();
-                break;
-              }
-            }
-          }
-        } finally {
-          // cancel() rejects once the stream was aborted; swallow it (no unhandled rejection).
-          reader.cancel().catch(() => {});
-        }
-
-        // Graduate to larger payload when this size completed under time budget
-        if (!isDone && conn.sizeIndex < TEST.DOWNLOAD_SIZES.length - 1) {
-          conn.sizeIndex += 1;
-        }
-      } catch {
-        if (isDone || isAborted()) break;
-        await sleep(backoffMs(failures, 80), abortController.signal);
-        failures += 1;
-      }
-    }
-  };
-
-  const tasks = Array.from({ length: TEST.CONNECTIONS }, (_, i) => runConnection(i));
-  await Promise.race([Promise.all(tasks), sleep(TIMEOUTS.DOWNLOAD_MAX, abortController.signal)]);
-
-  isDone = true;
-  abortController.abort();
-  runAbort?.signal.removeEventListener('abort', onRunAbort);
-
-  throwIfAborted();
-
-  const now = performance.now();
-  const live = calculateAggregateSpeed(conns, now);
-  const speed = roundMbps(stableMbps(progressSamples.length ? progressSamples : [live]));
-  const loadedPing = bufferbloat.stop();
-
-  if (speed <= 0 && conns.every((c) => c.bytesLoaded === 0)) {
-    const err = new Error('Download test failed. The endpoint may be blocked or unreachable.');
-    err.code = 'DOWNLOAD_FAILED';
-    throw err;
-  }
-
-  return { speed, loadedPing };
-};
-
-// ─── Upload ───────────────────────────────────────────────────────────────────
-
-/**
- * POST a chunk via XHR so we get real upload progress events (fetch cannot).
- * @param {Uint8Array} payload
- * @param {AbortSignal} signal
- * @param {(loaded: number) => void} onBytes
- * @returns {Promise<number>} duration ms
- */
-const xhrUploadChunk = (payload, signal, onBytes) =>
+const xhrTransfer = ({ method, url, body, signal, onBytes }) =>
   new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    let lastLoaded = 0;
+    const target = body ? xhr.upload : xhr;
+    let reported = 0;
 
-    const cleanup = () => {
-      signal.removeEventListener('abort', onAbort);
+    const credit = (loaded) => {
+      if (loaded > reported) {
+        onBytes(loaded - reported);
+        reported = loaded;
+      }
     };
-
+    const finish = (fn, arg) => {
+      signal.removeEventListener('abort', onAbort);
+      fn(arg);
+    };
     const onAbort = () => {
-      try { xhr.abort(); } catch { /* ignore */ }
-      cleanup();
-      const err = new Error('Aborted');
-      err.name = 'AbortError';
-      reject(err);
+      xhr.abort();
+      finish(reject, abortError());
     };
 
     if (signal.aborted) {
-      onAbort();
+      reject(abortError());
       return;
     }
     signal.addEventListener('abort', onAbort, { once: true });
 
-    xhr.upload.onprogress = (ev) => {
-      if (!ev.lengthComputable) return;
-      const delta = ev.loaded - lastLoaded;
-      if (delta > 0) {
-        lastLoaded = ev.loaded;
-        onBytes(delta);
-      }
-    };
-
+    target.onprogress = (ev) => credit(ev.loaded);
     xhr.onload = () => {
-      cleanup();
-      // Account for any remaining bytes not reported in progress events
-      if (payload.byteLength > lastLoaded) {
-        onBytes(payload.byteLength - lastLoaded);
+      if (xhr.status < 200 || xhr.status >= 300) {
+        finish(reject, new Error(`HTTP ${xhr.status}`));
+        return;
       }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(performance.now());
-      else reject(new Error(`Upload HTTP ${xhr.status}`));
+      // Progress events may stop short of the total; the transfer is complete.
+      credit(body ? body.byteLength : Math.max(reported, xhr.response?.byteLength ?? 0));
+      finish(resolve);
     };
+    xhr.onerror = () => finish(reject, new Error('Network error'));
+    xhr.ontimeout = () => finish(reject, new Error('Timeout'));
 
-    xhr.onerror = () => {
-      cleanup();
-      reject(new Error('Upload network error'));
-    };
-
-    xhr.ontimeout = () => {
-      cleanup();
-      reject(new Error('Upload timeout'));
-    };
-
-    xhr.open('POST', appendCacheBuster(ENDPOINTS.UPLOAD));
-    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-    xhr.timeout = TIMEOUTS.UPLOAD_MAX;
-    xhr.send(payload);
+    xhr.open(method, url);
+    xhr.responseType = 'arraybuffer';
+    xhr.timeout = TIMEOUTS.TRANSFER_MAX;
+    if (body) xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.send(body ?? null);
   });
 
 /**
- * Parallel upload with adaptive chunk sizing + real XHR upload progress.
- * @param {(speed: number) => void} onProgress
+ * Run TEST.CONNECTIONS parallel transfer loops for up to `maxMs`, sampling
+ * the shared byte counter on a timer.
+ *
+ * @param {object} opts
+ * @param {(sizeIndex: number) => { url: string, body?: Uint8Array, method: 'GET'|'POST' }} opts.request
+ * @param {number} opts.sizes        number of payload steps (each loop grows one step per transfer)
+ * @param {number} opts.maxMs
+ * @param {(mbps: number) => void} opts.onProgress
+ * @returns {Promise<{ speed: number, bytes: number }>}
  */
-const measureUpload = async (onProgress) => {
-  const deadline = performance.now() + TIMEOUTS.UPLOAD_MAX;
-  let isDone = false;
-  let lastReport = performance.now();
+const measureThroughput = async ({ request, sizes, maxMs, onProgress }) => {
   const abortController = new AbortController();
-  const progressSamples = [];
-
-  const onRunAbort = () => {
-    isDone = true;
-    abortController.abort();
-  };
+  const signal = abortController.signal;
+  const onRunAbort = () => abortController.abort();
   runAbort?.signal.addEventListener('abort', onRunAbort, { once: true });
 
-  const maxPayload = new Uint8Array(TEST.UPLOAD_MAX_CHUNK).fill(1);
+  let bytes = 0;
+  let firstByteAt = null;
+  /** @type {{ t: number, bytes: number }[]} cumulative byte count over time */
+  const series = [];
+  const rates = [];
 
-  const conns = Array.from({ length: TEST.CONNECTIONS }, () => ({
-    bytesLoaded: 0,
-    transferStart: null,
-    actualStart: null,
-    actualBytes: 0,
-    warmupDone: false,
-    chunkSize: TEST.UPLOAD_INITIAL_CHUNK,
-  }));
-
-  bufferbloat.start();
-
-  const reportProgress = () => {
-    const now = performance.now();
-    if (now - lastReport < TEST.PROGRESS_INTERVAL) return;
-    const aggregateSpeed = calculateAggregateSpeed(conns, now);
-    if (aggregateSpeed > 0) {
-      progressSamples.push(aggregateSpeed);
-      onProgress(roundMbps(aggregateSpeed));
-    }
-    const transferStart = conns.reduce(
-      (min, c) => (c.transferStart !== null && (min === null || c.transferStart < min) ? c.transferStart : min),
-      null,
-    );
-    const elapsed = transferStart !== null ? now - transferStart : 0;
-    lastReport = now;
-
-    if (
-      conns.every((c) => c.warmupDone) &&
-      canEarlyExit(progressSamples, elapsed)
-    ) {
-      isDone = true;
-      abortController.abort();
-    }
+  // Throughput over the most recent half of the transfer (discards ramp-up).
+  const rateNow = (now) => {
+    if (firstByteAt === null || now - firstByteAt < TEST.MIN_WINDOW_MS) return 0;
+    const from = firstByteAt + (now - firstByteAt) / 2;
+    let i = 0;
+    while (i < series.length - 1 && series[i + 1].t <= from) i++;
+    const base = series[i];
+    const dt = now - base.t;
+    return dt > 0 ? ((bytes - base.bytes) * 8) / dt / 1000 : 0;
   };
 
-  const runConnection = async (index) => {
-    const conn = conns[index];
-
+  const loop = async () => {
+    let step = 0;
     let failures = 0;
-    while (!isDone && performance.now() < deadline && !isAborted()) {
-      const currentChunkSize = conn.chunkSize;
-      const payload = maxPayload.subarray(0, currentChunkSize);
-      const t0 = performance.now();
-
+    while (!signal.aborted) {
       try {
-        if (conn.transferStart === null) {
-          conn.transferStart = t0;
-        }
-
-        await xhrUploadChunk(payload, abortController.signal, (delta) => {
-          conn.bytesLoaded += delta;
-
-          const now = performance.now();
-          if (conn.transferStart !== null && !conn.warmupDone) {
-            if (now - conn.transferStart >= TEST.WARMUP_MS) {
-              conn.warmupDone = true;
-              conn.actualStart = now;
-              conn.actualBytes = delta;
+        await xhrTransfer({
+          ...request(step),
+          signal,
+          onBytes: (delta) => {
+            if (firstByteAt === null) {
+              firstByteAt = performance.now();
+              series.push({ t: firstByteAt, bytes: 0 });
             }
-          } else if (conn.warmupDone) {
-            conn.actualBytes += delta;
-          }
-          reportProgress();
+            bytes += delta;
+          },
         });
-
         failures = 0;
-        const duration = performance.now() - t0;
-        if (duration < 100) {
-          conn.chunkSize = Math.min(conn.chunkSize * 2, TEST.UPLOAD_MAX_CHUNK);
-        } else if (duration > 500) {
-          conn.chunkSize = Math.max(Math.floor(conn.chunkSize / 2), TEST.UPLOAD_MIN_CHUNK);
-        }
-      } catch (err) {
-        if (isDone || isAborted() || err?.name === 'AbortError') break;
-        await sleep(backoffMs(failures, 100), abortController.signal);
+        step = Math.min(step + 1, sizes - 1);
+      } catch {
+        if (signal.aborted) return;
+        // Failed or rate-limited (a 429 reaches us as a CORS error): back off, go smaller.
+        step = Math.max(step - 1, 0);
+        await sleep(backoffMs(failures, 250), signal);
         failures += 1;
       }
     }
   };
 
-  const tasks = Array.from({ length: TEST.CONNECTIONS }, (_, i) => runConnection(i));
-  await Promise.race([Promise.all(tasks), sleep(TIMEOUTS.UPLOAD_MAX, abortController.signal)]);
+  const started = performance.now();
+  const sampler = setInterval(() => {
+    const now = performance.now();
+    if (firstByteAt !== null) series.push({ t: now, bytes });
+    const mbps = rateNow(now);
+    if (mbps > 0) {
+      rates.push(mbps);
+      onProgress(roundMbps(mbps));
+    }
+    const window = rates.slice(-TEST.EARLY_EXIT_MIN_SAMPLES);
+    const stable = firstByteAt !== null && now - firstByteAt >= TEST.EARLY_EXIT_MIN_MS
+      && window.length === TEST.EARLY_EXIT_MIN_SAMPLES
+      && (Math.max(...window) - Math.min(...window)) / Math.max(...window) <= TEST.EARLY_EXIT_SPREAD;
+    if (stable || now - started >= maxMs) abortController.abort();
+  }, TEST.PROGRESS_INTERVAL);
 
-  isDone = true;
-  abortController.abort();
+  const loops = Array.from({ length: TEST.CONNECTIONS }, loop);
+  await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
+  clearInterval(sampler);
+  await Promise.allSettled(loops);
   runAbort?.signal.removeEventListener('abort', onRunAbort);
-
   throwIfAborted();
 
   const now = performance.now();
-  const live = calculateAggregateSpeed(conns, now);
-  const speed = roundMbps(stableMbps(progressSamples.length ? progressSamples : [live]));
-  const loadedPing = bufferbloat.stop();
+  series.push({ t: now, bytes });
+  return { speed: roundMbps(rateNow(now)), bytes };
+};
 
-  if (speed <= 0 && conns.every((c) => c.bytesLoaded === 0)) {
-    const err = new Error('Upload test failed. The endpoint may be blocked or unreachable.');
+// ─── Download ─────────────────────────────────────────────────────────────────
+
+const measureDownload = async (onProgress) => {
+  loadedLatency.start();
+  try {
+    const { speed, bytes } = await measureThroughput({
+      request: (step) => ({
+        method: 'GET',
+        url: appendCacheBuster(`${ENDPOINTS.DOWNLOAD}?bytes=${TEST.DOWNLOAD_SIZES[step]}`),
+      }),
+      sizes: TEST.DOWNLOAD_SIZES.length,
+      maxMs: TIMEOUTS.DOWNLOAD_MAX,
+      onProgress,
+    });
+    if (speed <= 0 && bytes === 0) {
+      const err = new Error('Download test failed. The test server may be limiting requests from your network; wait a minute and try again.');
+      err.code = 'DOWNLOAD_FAILED';
+      throw err;
+    }
+    return { speed, loadedPing: loadedLatency.stop() };
+  } finally {
+    loadedLatency.stop();
+  }
+};
+
+// ─── Upload ───────────────────────────────────────────────────────────────────
+
+const measureUpload = async (onProgress) => {
+  const payload = new Uint8Array(TEST.UPLOAD_SIZES[TEST.UPLOAD_SIZES.length - 1]).fill(1);
+  const { speed, bytes } = await measureThroughput({
+    // POSTs are never cached, and a fixed URL lets the browser reuse its CORS
+    // preflight instead of paying one per request.
+    request: (step) => ({
+      method: 'POST',
+      url: ENDPOINTS.UPLOAD,
+      body: payload.subarray(0, TEST.UPLOAD_SIZES[step]),
+    }),
+    sizes: TEST.UPLOAD_SIZES.length,
+    maxMs: TIMEOUTS.UPLOAD_MAX,
+    onProgress,
+  });
+  if (speed <= 0 && bytes === 0) {
+    const err = new Error('Upload test failed. The test server may be limiting requests from your network; wait a minute and try again.');
     err.code = 'UPLOAD_FAILED';
     throw err;
   }
-
-  return { speed, loadedPing };
+  return { speed };
 };
 
 // ─── Message handler ──────────────────────────────────────────────────────────
@@ -606,12 +389,12 @@ self.onmessage = async (e) => {
     await sleep(TIMEOUTS.PAUSE_BETWEEN, runAbort.signal);
     throwIfAborted();
 
-    // 3 — Upload
+    // 3 — Upload (loaded latency comes from the download phase)
     post({ type: MSG.STATUS, message: STATUS.UPLOADING });
     const ul = await measureUpload(
       (speed) => post({ type: MSG.UPLOAD_PROGRESS, speed }),
     );
-    post({ type: MSG.UPLOAD_COMPLETE, speed: ul.speed, loadedPing: ul.loadedPing });
+    post({ type: MSG.UPLOAD_COMPLETE, speed: ul.speed, loadedPing: 0 });
 
     post({ type: MSG.STATUS, message: STATUS.FINISHED });
   } catch (err) {
@@ -625,6 +408,6 @@ self.onmessage = async (e) => {
       code: err?.code || 'UNKNOWN',
     });
   } finally {
-    bufferbloat.stop();
+    loadedLatency.stop();
   }
 };
