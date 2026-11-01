@@ -17,12 +17,12 @@ const getRating = (score) => {
   if (score >= SCORE.EXCELLENT) return {
     title: 'Excellent',
     desc:  'Perfect for gaming, 4K streaming, and massive file syncs.',
-    color: 'var(--green)',
+    color: 'var(--text-1)',
   };
   if (score >= SCORE.GOOD) return {
     title: 'Good',
     desc:  'Great for HD streaming, responsive video calls, and remote work.',
-    color: 'var(--green)',
+    color: 'var(--text-1)',
   };
   if (score >= SCORE.FAIR) return {
     title: 'Fair',

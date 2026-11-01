@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Sparkline = ({ data, colorMap = { download: 'var(--accent)', upload: 'var(--green)' } }) => {
+const Sparkline = ({ data, colorMap = { download: 'var(--text-1)', upload: 'var(--amber)' } }) => {
   if (!data || data.length < 2) return null;
 
   const width = 300;

@@ -166,7 +166,7 @@ const ExpertReportModal = memo(({ report, onClose }) => {
                 </div>
                 <div className="er-small-stat">
                   <span className="er-sl">Integrity</span>
-                  <span className="er-sv"><ShieldCheck size={12} color="var(--green)" /> Verified</span>
+                  <span className="er-sv"><ShieldCheck size={12} color="var(--text-1)" /> Verified</span>
                 </div>
               </div>
 

@@ -2,20 +2,19 @@
 
 :root {
   --bg:           #000000;
-  --surface:      rgba(10, 10, 12, 0.45);
-  --surface-2:    rgba(16, 16, 20, 0.65);
-  --border:       rgba(255, 255, 255, 0.035);
-  --border-light: rgba(255, 255, 255, 0.07);
+  --surface:      rgba(255, 255, 255, 0.02);
+  --surface-2:    rgba(255, 255, 255, 0.045);
+  --border:       rgba(255, 255, 255, 0.06);
+  --border-light: rgba(255, 255, 255, 0.1);
 
-  --text-1: #f3f3f6;
-  --text-2: #8e8e9c;
-  --text-3: #4e4e5e;
+  --text-1: #ffffff;
+  --text-2: rgba(255, 255, 255, 0.62);
+  --text-3: rgba(255, 255, 255, 0.36);
 
-  --accent:       #5e5ef0;
+  /* Palette: white on near-black. Amber = upload / warning, red = error / bad. */
 
-  --green:  #3dd68c;
-  --amber:  #f0b429;
-  --red:    #f87171;
+  --amber:  #f5a524;
+  --red:    #ef4444;
 
   --font:         'Inter', system-ui, sans-serif;
   --font-heading: 'Outfit', sans-serif;
@@ -94,7 +93,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .er-title-icon {
-  color: var(--accent);
+  color: var(--text-1);
 }
 .er-body {
   padding: 24px;

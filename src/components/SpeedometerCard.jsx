@@ -9,6 +9,7 @@ import useSpring from '../hooks/useSpring.js';
 import PhaseBar from './PhaseBar.jsx';
 import ArcGauge from './ArcGauge.jsx';
 import { STATUS, PHASE_LABELS } from '../constants.js';
+import { pingLevel, jitterLevel } from '../utils/levels.js';
 import { BASE_MAX, scaleMaxFor, labelsFor, fractionFor } from '../utils/gaugeScale.js';
 
 const prefersReducedMotion = typeof window !== 'undefined'
@@ -96,7 +97,7 @@ const SpeedometerCard = memo(({
   const liveHint = PHASE_LABELS[status] ?? '';
   const numColor = isUpload
     ? ' ul'
-    : (status === STATUS.DOWNLOADING || status === STATUS.FINISHED ? ' dl' : status === STATUS.PINGING ? ' ping' : '');
+    : (status === STATUS.DOWNLOADING || status === STATUS.FINISHED ? ' dl' : status === STATUS.PINGING ? ' ping' : status === STATUS.ERROR ? ' error' : '');
 
   return (
     <div className={`speedometer-card ${status}${isRunning ? ' is-running' : ''}`}>
@@ -130,7 +131,7 @@ const SpeedometerCard = memo(({
       <div className="quick-stats">
         <div className="qs-item">
           <div className="qs-label">Ping</div>
-          <div className="qs-value" aria-live="polite">
+          <div className={`qs-value ${pingLevel(metrics.ping)}`} aria-live="polite">
             {metrics.ping > 0 ? metrics.ping : '--'}
           </div>
           <div className="qs-unit">ms</div>
@@ -140,7 +141,7 @@ const SpeedometerCard = memo(({
 
         <div className="qs-item">
           <div className="qs-label">Jitter</div>
-          <div className="qs-value" aria-live="polite">
+          <div className={`qs-value ${jitterLevel(metrics.jitter)}`} aria-live="polite">
             {metrics.jitter > 0 ? metrics.jitter.toFixed(1) : '--'}
           </div>
           <div className="qs-unit">ms</div>

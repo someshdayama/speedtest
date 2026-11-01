@@ -35,7 +35,7 @@ const NEEDLE = { x: CX, y1: CY - (MAJOR_OUT - 6), y2: CY - (OUTER + 2) };
 const PEAK = `M ${CX} ${CY - OUTER - 1.5} l -3.5 -6 h 7 Z`;
 const rotateTo = (fraction) => ({ transform: `rotate(${START_ANGLE + SWEEP * fraction}deg)` });
 
-const PHASE_COLOR = { pinging: 'var(--amber)', uploading: 'var(--green)' };
+const PHASE_COLOR = { uploading: 'var(--amber)' };
 
 const STEPS_PER_SEGMENT = MINOR_TICKS + 1;
 
@@ -105,7 +105,7 @@ const ArcGauge = memo(({ fraction, peakFraction = 0, labels, overflow = false, p
     <svg
       className="arc-gauge"
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      style={{ '--gauge-color': PHASE_COLOR[phase] ?? 'var(--accent)' }}
+      style={{ '--gauge-color': PHASE_COLOR[phase] ?? 'var(--text-1)' }}
       aria-hidden="true"
       focusable="false"
     >

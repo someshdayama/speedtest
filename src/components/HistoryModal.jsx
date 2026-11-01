@@ -142,7 +142,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                     <button
                       className="history-btn"
                       onClick={clearHistory}
-                      style={{ color: 'var(--red)', borderColor: 'rgba(248,113,113,0.15)' }}
+                      style={{ color: 'var(--red)', borderColor: 'rgba(239,68,68,0.2)' }}
                       title="Clear History"
                       aria-label="Clear all test history"
                     >
@@ -227,7 +227,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                             <svg width="44" height="20" viewBox="0 0 44 20" fill="none">
                               <polyline
                                 points={miniPath}
-                                stroke="var(--accent)"
+                                stroke="var(--text-1)"
                                 strokeWidth="1.5"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"

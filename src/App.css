@@ -77,7 +77,7 @@
   bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
-  background: #141418;
+  background: #000;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-top-color: rgba(255, 255, 255, 0.18);
   border-radius: 999px;
@@ -108,19 +108,17 @@
 .lrb-label { color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.6rem; }
 .lrb-unit  { color: var(--text-3); }
 .lrb-time  { color: var(--text-3); }
-.lrb-dl    { color: var(--accent); }
-.lrb-ul    { color: var(--green); }
-.lrb-ping  { color: var(--amber); }
+.lrb-dl    { color: var(--text-1); }
+.lrb-ul    { color: var(--amber); }
+.lrb-ping  { color: var(--text-1); }
 
 /* ---------- Header ---------- */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 1.5rem;
-  margin-bottom: 2.5rem;
-  transition: border-color 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
 }
 
 .brand {
@@ -148,12 +146,12 @@
   font-size: 0.78rem;
   font-weight: 600;
   font-family: var(--font-heading);
-  color: var(--text-2);
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border);
+  color: var(--text-1);
+  background: transparent;
+  border: 1px solid var(--border-light);
   border-radius: var(--r-sm);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease;
   line-height: 1;
 }
 
@@ -189,8 +187,8 @@
 
 /* ---------- Speedometer Card ---------- */
 .speedometer-card {
-  --phase: var(--accent);
-  background: #0b0b0e;
+  --phase: var(--text-1);
+  background: #000;
   border: 1px solid var(--border-light);
   border-radius: var(--r-xl);
   padding: 1.25rem 1.5rem 0;
@@ -202,8 +200,7 @@
   transition: border-color 0.4s ease;
 }
 
-.speedometer-card.pinging   { --phase: var(--amber); }
-.speedometer-card.uploading { --phase: var(--green); }
+.speedometer-card.uploading { --phase: var(--amber); }
 .speedometer-card.is-running { border-color: color-mix(in srgb, var(--phase) 22%, transparent); }
 
 /* ── Gauge block ── */
@@ -261,7 +258,7 @@
   transition: fill 0.25s ease;
 }
 .gauge-label.passed { fill: var(--text-2); }
-.gauge-label.overflow { font-weight: 600; fill: var(--gauge-color); }
+.gauge-label.overflow { font-weight: 600; fill: var(--amber); }
 
 .gauge-needle {
   stroke: var(--text-1);
@@ -310,9 +307,10 @@
   text-transform: uppercase;
   color: var(--text-3);
 }
-.speed-label.dl   { color: var(--accent); }
-.speed-label.ul   { color: var(--green); }
-.speed-label.ping { color: var(--amber); }
+.speed-label.dl,
+.speed-label.ping { color: var(--text-2); }
+.speed-label.ul   { color: var(--amber); }
+.speed-label.error { color: var(--red); }
 
 /* ── Live sparkline under the readout ── */
 .live-spark {
@@ -358,9 +356,8 @@
   font-family: var(--font);
 }
 
-.phase-step.active      { color: var(--accent); }
-.phase-step.active.ul   { color: var(--green); }
-.phase-step.active.ping { color: var(--amber); }
+.phase-step.active      { color: var(--text-1); }
+.phase-step.active.ul   { color: var(--amber); }
 .phase-step.done        { color: var(--text-2); }
 
 .phase-dot {
@@ -423,6 +420,9 @@
   line-height: 1.2;
 }
 
+.qs-value.amber { color: var(--amber); }
+.qs-value.red   { color: var(--red); }
+
 .qs-unit {
   font-size: 0.58rem;
   color: var(--text-3);
@@ -457,17 +457,17 @@
 .action-button:focus-visible,
 .action-btn-ghost:focus-visible,
 .history-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--text-1);
   outline-offset: 2px;
 }
 
 .action-button.is-stopping {
   color: var(--red);
   background: transparent;
-  border-color: rgba(248, 113, 113, 0.35);
+  border-color: rgba(239, 68, 68, 0.35);
 }
 
-.action-button.is-stopping:hover { background: rgba(248, 113, 113, 0.08); }
+.action-button.is-stopping:hover { background: rgba(239, 68, 68, 0.08); }
 
 /* ---------- Right Column ---------- */
 .stats-column {
@@ -551,9 +551,9 @@
   transition: color 0.3s;
 }
 
-.stat-card-value.accent { color: var(--accent); }
-.stat-card-value.green  { color: var(--green); }
+.stat-card-value.accent { color: var(--text-1); }
 .stat-card-value.amber  { color: var(--amber); }
+.stat-card-value.red    { color: var(--red); }
 
 .stat-unit {
   font-size: 0.75rem;
@@ -575,11 +575,11 @@
   height: 100%;
   border-radius: 3px;
   transition: width 0.75s cubic-bezier(0.16, 1, 0.3, 1);
-  background: var(--accent);
+  background: var(--text-1);
 }
 
-.stat-track-fill.green { background: var(--green); }
 .stat-track-fill.amber { background: var(--amber); }
+.stat-track-fill.red   { background: var(--red); }
 
 /* ---------- Score Card ---------- */
 .score-card {
@@ -699,8 +699,8 @@
   line-height: 1;
 }
 
-.score-sub-grade.excellent { color: var(--green); }
-.score-sub-grade.good      { color: var(--green); opacity: 0.85; }
+.score-sub-grade.excellent { color: var(--text-1); }
+.score-sub-grade.good      { color: var(--text-1); opacity: 0.85; }
 .score-sub-grade.fair      { color: var(--amber); }
 .score-sub-grade.poor      { color: var(--red); }
 
@@ -938,9 +938,9 @@
   color: var(--text-2);
 }
 
-.h-val.dl   { color: var(--accent); }
-.h-val.ul   { color: var(--green); }
-.h-val.ping { color: var(--amber); }
+.h-val.dl   { color: var(--text-1); }
+.h-val.ul   { color: var(--amber); }
+.h-val.ping { color: var(--text-1); }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 650px) {
@@ -969,7 +969,7 @@
   .h-date { font-size: 0.68rem; }
   .h-val { font-size: 0.78rem; }
 
-  .header { padding-bottom: 1rem; margin-bottom: 1.25rem; }
+  .header { padding-bottom: 0.5rem; margin-bottom: 1.25rem; }
 
   /* Thumb-reachable primary action, clear of the home indicator. */
   .action-dock {
@@ -1075,7 +1075,7 @@
   font-weight: 500;
 }
 
-.diag-val.green { color: var(--green); }
+.diag-val.red { color: var(--red); }
 .diag-val.amber { color: var(--amber); }
 
 /* ── Skip link + focus-visible (a11y, theme-preserving) ── */
@@ -1098,12 +1098,12 @@
 
 .skip-link:focus {
   top: 1rem;
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--text-1);
   outline-offset: 2px;
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--text-1);
   outline-offset: 2px;
 }
 
@@ -1133,8 +1133,8 @@ a:focus:not(:focus-visible) {
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
-  background: rgba(248, 113, 113, 0.06);
-  border: 1px solid rgba(248, 113, 113, 0.22);
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.22);
   border-radius: var(--r-md);
   color: var(--text-1);
 }
@@ -1195,7 +1195,7 @@ a:focus:not(:focus-visible) {
   font-family: var(--font);
   font-variant-numeric: tabular-nums;
   color: var(--text-1);
-  background: rgba(94, 94, 240, 0.25);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
 }
 
@@ -1223,7 +1223,7 @@ a:focus:not(:focus-visible) {
 .session-history-link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--text-1);
   font-size: 0.65rem;
   font-weight: 600;
   font-family: var(--font-heading);
@@ -1266,9 +1266,9 @@ a:focus:not(:focus-visible) {
   padding-top: 0;
 }
 
-.shi-dl { color: var(--accent); }
-.shi-ul { color: var(--green); }
-.shi-ping { color: var(--amber); }
+.shi-dl { color: var(--text-1); }
+.shi-ul { color: var(--amber); }
+.shi-ping { color: var(--text-1); }
 .shi-time {
   color: var(--text-3);
   font-size: 0.62rem;

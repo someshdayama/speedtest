@@ -4,7 +4,7 @@ import { memo } from 'react';
 const SpeedChart = memo(({ data, type }) => {
   if (!data || data.length < 2) return null;
 
-  const color = type === 'upload' ? 'var(--green)' : 'var(--accent)';
+  const color = type === 'upload' ? 'var(--amber)' : 'var(--text-1)';
   const gradId = `grad-${type}`;
 
   const width = 1000; // Use a large internal resolution for smoothness

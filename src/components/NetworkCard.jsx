@@ -94,13 +94,13 @@ const NetworkCard = memo(({ info, dlStability, ulStability }) => {
               </div>
               <div className="diag-item">
                 <span className="diag-label">Download Stream Stability</span>
-                <span className={`diag-val${dlStability > 85 ? ' green' : dlStability > 60 ? ' amber' : ''}`}>
+                <span className={`diag-val${dlStability > 85 ? '' : dlStability > 60 ? ' amber' : dlStability > 0 ? ' red' : ''}`}>
                   {dlStability > 0 ? `${dlStability}%` : '--'}
                 </span>
               </div>
               <div className="diag-item">
                 <span className="diag-label">Upload Stream Stability</span>
-                <span className={`diag-val${ulStability > 85 ? ' green' : ulStability > 60 ? ' amber' : ''}`}>
+                <span className={`diag-val${ulStability > 85 ? '' : ulStability > 60 ? ' amber' : ulStability > 0 ? ' red' : ''}`}>
                   {ulStability > 0 ? `${ulStability}%` : '--'}
                 </span>
               </div>

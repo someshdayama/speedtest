@@ -18,6 +18,7 @@ import SpeedometerCard from './components/SpeedometerCard.jsx';
 import ExpertReportModal from './components/ExpertReportModal.jsx';
 
 import { STATUS, PHASE_LABELS } from './constants.js';
+import { pingLevel, jitterLevel } from './utils/levels.js';
 import './App.css';
 
 const ICON_DOWNLOAD = <ArrowDown size={13} />;
@@ -255,8 +256,8 @@ export default function App() {
                 icon={ICON_UPLOAD}
                 value={metrics.upload}
                 unit="Mbps"
-                colorClass="green"
-                fillClass="green"
+                colorClass="amber"
+                fillClass="amber"
                 max={200}
               />
               <StatCard
@@ -264,8 +265,8 @@ export default function App() {
                 icon={ICON_PING}
                 value={metrics.ping}
                 unit="ms"
-                colorClass="amber"
-                fillClass="amber"
+                colorClass={pingLevel(metrics.ping)}
+                fillClass={pingLevel(metrics.ping)}
                 max={200}
                 invertBar
               />
@@ -274,8 +275,8 @@ export default function App() {
                 icon={ICON_JITTER}
                 value={metrics.jitter || null}
                 unit="ms"
-                colorClass="amber"
-                fillClass="amber"
+                colorClass={jitterLevel(metrics.jitter)}
+                fillClass={jitterLevel(metrics.jitter)}
                 max={50}
                 invertBar
               />
