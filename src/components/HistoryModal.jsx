@@ -137,7 +137,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                       aria-label="Export history to PDF"
                     >
                       <Download size={13} aria-hidden="true" />
-                      Export PDF
+                      <span className="btn-text">Export PDF</span>
                     </button>
                     <button
                       className="history-btn"
@@ -147,7 +147,7 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                       aria-label="Clear all test history"
                     >
                       <Trash2 size={13} aria-hidden="true" />
-                      Clear
+                      <span className="btn-text">Clear</span>
                     </button>
                   </>
                 )}
@@ -181,6 +181,29 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                 </div>
               ) : (
                 <>
+                  {(() => {
+                    const latest = history[0];
+                    const { day, time } = formatDate(latest.date);
+                    return (
+                      <button
+                        type="button"
+                        className="history-latest"
+                        onClick={() => setSelectedReport(latest)}
+                        aria-label={`Open detailed report for latest run, ${day} ${time}`}
+                      >
+                        <span className="hl-head">
+                          <span className="hl-label">Latest run · {day}, {time}</span>
+                          <span className="hl-cta">Detailed report <ChevronRight size={14} aria-hidden="true" /></span>
+                        </span>
+                        <span className="hl-vals">
+                          <span>↓ {fmt(latest.download)} <small>Mbps</small></span>
+                          <span className="hl-ul">↑ {fmt(latest.upload)} <small>Mbps</small></span>
+                          <span>◎ {latest.ping || '--'} <small>ms</small></span>
+                        </span>
+                      </button>
+                    );
+                  })()}
+
                   <div className="history-cols" aria-hidden="true">
                     <span className="hcol-label">Date</span>
                     <span className="hcol-label">Download</span>
@@ -211,7 +234,15 @@ const HistoryModal = memo(({ open, onClose, history, clearHistory }) => {
                         key={row.date + i}
                         className="history-row clickable-row"
                         onClick={() => setSelectedReport(row)}
-                        title="Click to view Expert Report"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedReport(row);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title="Open detailed report"
                         aria-label={`View expert report for ${day} ${time}`}
                       >
                         <div className="h-date">

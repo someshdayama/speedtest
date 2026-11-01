@@ -145,7 +145,7 @@ const ExpertReportModal = memo(({ report, onClose }) => {
               {/* Core Metrics Grid */}
               <div className="er-grid">
                 <StatBox label="Download" value={fmt(report.download)} unit="Mbps" icon={Download} colorClass="er-blue" />
-                <StatBox label="Upload" value={fmt(report.upload)} unit="Mbps" icon={Upload} colorClass="er-green" />
+                <StatBox label="Upload" value={fmt(report.upload)} unit="Mbps" icon={Upload} colorClass="er-ul" />
                 <StatBox label="Ping (Idle)" value={report.ping || '--'} unit="ms" icon={Activity} colorClass="er-amber" />
                 <StatBox label="Loaded Ping" value={report.loadedPing || '--'} unit="ms" icon={AlertTriangle} colorClass="er-orange" />
               </div>

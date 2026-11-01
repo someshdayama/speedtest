@@ -5,7 +5,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ArrowDown, ArrowUp, Activity, History, Share2, FileText, Waves, AlertTriangle } from 'lucide-react';
+import { ArrowDown, ArrowUp, Activity, History, Share2, Waves, AlertTriangle } from 'lucide-react';
 
 import useSpeedTest from './hooks/useSpeedTest.js';
 import useNetworkInfo from './hooks/useNetworkInfo.js';
@@ -15,7 +15,6 @@ import ScoreCard from './components/ScoreCard.jsx';
 import NetworkCard from './components/NetworkCard.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
 import SpeedometerCard from './components/SpeedometerCard.jsx';
-import ExpertReportModal from './components/ExpertReportModal.jsx';
 
 import { STATUS, PHASE_LABELS } from './constants.js';
 import { pingLevel, jitterLevel } from './utils/levels.js';
@@ -76,7 +75,6 @@ export default function App() {
   }, [networkInfo.provider, setProvider]);
 
   const [showHistory, setShowHistory] = useState(false);
-  const [showExpertReport, setShowExpertReport] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
 
@@ -119,7 +117,6 @@ export default function App() {
     }
   }, [metrics, score, showToast]);
 
-  const latestReport = history[0] ?? null;
   const statusAnnouncement = PHASE_LABELS[status] ?? '';
 
   return (
@@ -129,21 +126,6 @@ export default function App() {
       <div className="app-container">
         <header className="header">
           <h1 className="brand">Velocity</h1>
-
-          <nav className="header-actions" aria-label="App controls">
-            <button
-              className="history-btn"
-              onClick={openHistory}
-              aria-label="View test history"
-              type="button"
-            >
-              <History size={13} aria-hidden="true" />
-              History
-              {history.length > 0 && (
-                <span className="history-count" aria-hidden="true">{Math.min(history.length, 99)}</span>
-              )}
-            </button>
-          </nav>
         </header>
 
         {/* Screen-reader live phase announcements */}
@@ -187,6 +169,12 @@ export default function App() {
                 </button>
               )}
 
+              {isIdle && history.length > 0 && (
+                <button className="history-link" onClick={openHistory} type="button">
+                  View history ({Math.min(history.length, 99)})
+                </button>
+              )}
+
               {isRunning && (
                 <button
                   className="action-button is-stopping"
@@ -209,18 +197,16 @@ export default function App() {
                     Test Again
                   </button>
                   <div className="finished-actions-secondary">
-                    {latestReport && (
-                      <button
-                        className="action-btn-ghost"
-                        onClick={() => setShowExpertReport(true)}
-                        aria-label="View expert report"
-                        title="Expert Report"
-                        type="button"
-                      >
-                        <FileText size={14} />
-                        Report
-                      </button>
-                    )}
+                    <button
+                      className="action-btn-ghost"
+                      onClick={openHistory}
+                      aria-label="View history and detailed report"
+                      title="History & report"
+                      type="button"
+                    >
+                      <History size={14} aria-hidden="true" />
+                      History
+                    </button>
                     <button
                       className="action-btn-ghost"
                       onClick={handleShare}
@@ -331,11 +317,6 @@ export default function App() {
           onClose={closeHistory}
           history={history}
           clearHistory={clearHistory}
-        />
-
-        <ExpertReportModal
-          report={showExpertReport ? latestReport : null}
-          onClose={() => setShowExpertReport(false)}
         />
       </div>
 
