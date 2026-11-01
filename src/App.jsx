@@ -13,6 +13,7 @@ import NerdPanel from './components/NerdPanel.jsx';
 import HistorySheet from './components/HistorySheet.jsx';
 import { STATUS, PHASE_LABELS } from './constants.js';
 import { verdictFor, shareText } from './utils/verdict.js';
+import { onUpdateReady, applyUpdate } from './pwa.js';
 import './App.css';
 
 const RUNNING = [STATUS.PINGING, STATUS.DOWNLOADING, STATUS.UPLOADING];
@@ -52,6 +53,13 @@ export default function App() {
   const [nerd, setNerd] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
+
+  // A new app version is applied only when nothing is on screen to lose.
+  const [updateReady, setUpdateReady] = useState(false);
+  useEffect(() => onUpdateReady(setUpdateReady), []);
+  useEffect(() => {
+    if (updateReady && status === STATUS.IDLE) applyUpdate();
+  }, [updateReady, status]);
 
   const isFinished = status === STATUS.FINISHED;
   const isError = status === STATUS.ERROR;
@@ -111,6 +119,11 @@ export default function App() {
             <p className="error" role="alert">{errorMessage || 'Something went wrong. Please try again.'}</p>
           )}
           {isFinished && nerd && lastRun && <NerdPanel run={lastRun} env={networkInfo} />}
+          {updateReady && (isFinished || isError) && (
+            <button type="button" className="text-btn" onClick={applyUpdate}>
+              A new version is ready — reload
+            </button>
+          )}
         </div>
       </main>
 

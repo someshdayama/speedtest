@@ -4,62 +4,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-    <!-- SEO -->
-    <title>Velocity — Network Speed Test</title>
-    <meta name="description" content="Accurate, real-time internet speed test. Measure download, upload, ping, and bufferbloat with Velocity." />
-    <meta name="robots" content="index, follow" />
+    <title>Velocity — Internet Speed Test</title>
+    <meta name="description" content="Check your internet speed in one tap. Velocity measures download, upload, ping, jitter and loaded latency in your browser, with no sign-up and no ads." />
+    <link rel="canonical" href="https://velocity-speedtest.netlify.app/" />
 
-    <!-- PWA / Theme -->
-    <meta name="theme-color" content="#0c0c0e" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Velocity" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="preload" href="/fonts/inter-v20-latin.woff2" as="font" type="font/woff2" crossorigin />
 
-    <!--
-      Content-Security-Policy
-      ─────────────────────────────────────────────────────────────────────────
-      default-src 'self'            — block everything not listed below
-      script-src  'self'            — only our own JS bundles
-      style-src   'self' 'unsafe-inline' fonts.googleapis.com
-                                    — inline styles needed by framer-motion;
-                                      Google Fonts stylesheet
-      font-src    fonts.gstatic.com — Google Fonts files
-      connect-src 'self'
-                  https://cloudflare.com
-                  https://speed.cloudflare.com
-                  https://ipinfo.io
-                  https://api.ipify.org
-                                    — only the endpoints our worker talks to
-      img-src     'self' data:      — favicons + any data URIs
-      worker-src  'self' blob:      — Vite inlines workers as blob: URLs
-      frame-ancestors 'none'        — no iframe embedding
-      base-uri    'self'            — lock <base> tag to same origin
-      form-action 'none'            — no form submissions
-    -->
-    <meta http-equiv="Content-Security-Policy" content="
-      default-src 'self';
-      script-src 'self';
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-      font-src https://fonts.gstatic.com;
-      connect-src 'self'
-        https://cloudflare.com
-        https://speed.cloudflare.com
-        https://ipinfo.io
-        https://api.ipify.org;
-      img-src 'self' data:;
-      worker-src 'self' blob:;
-      frame-ancestors 'none';
-      base-uri 'self';
-      form-action 'none';
-    " />
+    <!-- Security headers (CSP etc.) are sent by the host; see netlify.toml. -->
 
-    <!-- Open Graph -->
-    <meta property="og:title"       content="Velocity — Network Speed Test" />
-    <meta property="og:description" content="Accurate, real-time internet speed test." />
-    <meta property="og:type"        content="website" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Velocity" />
+    <meta property="og:title" content="Velocity — Internet Speed Test" />
+    <meta property="og:description" content="Download, upload, ping and jitter in one tap. No sign-up, no ads." />
+    <meta property="og:url" content="https://velocity-speedtest.netlify.app/" />
+    <meta property="og:image" content="https://velocity-speedtest.netlify.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Velocity speed test: a white download ring and an amber upload ring on black." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Velocity — Internet Speed Test" />
+    <meta name="twitter:description" content="Download, upload, ping and jitter in one tap. No sign-up, no ads." />
+    <meta name="twitter:image" content="https://velocity-speedtest.netlify.app/og-image.png" />
   </head>
   <body>
+    <noscript><p>Velocity needs JavaScript to run a speed test.</p></noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

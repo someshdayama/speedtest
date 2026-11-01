@@ -6,19 +6,34 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['apple-touch-icon.png', 'vite.svg'],
+      // 'prompt': a new version waits until the app says it is safe to swap
+      // (idle, or the user taps reload) — never in the middle of a test.
+      registerType: 'prompt',
+      injectRegister: false,
+      includeAssets: ['favicon.ico', 'favicon.svg', 'fonts/inter-v20-latin.woff2'],
       manifest: {
+        id:               '/',
         name:             'Velocity Speed Test',
         short_name:       'Velocity',
-        description:      'Accurate, real-time internet speed test.',
-        theme_color:      '#0c0c0e',
-        background_color: '#0c0c0e',
+        description:      'Check your internet speed in one tap: download, upload, ping and jitter.',
+        start_url:        '/',
+        scope:            '/',
         display:          'standalone',
+        orientation:      'portrait',
+        theme_color:      '#000000',
+        background_color: '#000000',
+        categories:       ['utilities'],
         icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+      },
+      workbox: {
+        // Offline shell: every navigation falls back to the cached app.
+        navigateFallback: '/index.html',
+        globPatterns: ['**/*.{js,css,html,woff2,svg,ico}'],
+        cleanupOutdatedCaches: true,
       },
     }),
   ],

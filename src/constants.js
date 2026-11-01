@@ -84,6 +84,8 @@ export const GAUGE = Object.freeze({
 
 export const LIMITS = Object.freeze({
   MAX_HISTORY: 50,
+  /** Max throughput samples kept per phase for each stored run. */
+  MAX_SAMPLES: 300,
 });
 
 // ─── Worker message types ─────────────────────────────────────────────────────
@@ -119,12 +121,6 @@ export const STORAGE = Object.freeze({
 });
 
 // ─── Score thresholds ─────────────────────────────────────────────────────────
-
-export const SCORE = Object.freeze({
-  EXCELLENT: 85,
-  GOOD: 65,
-  FAIR: 45,
-});
 
 export const SCORE_BANDS = Object.freeze({
   DL: { GREAT: 100, OK: 25, LOW: 5 },

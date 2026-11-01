@@ -146,11 +146,14 @@ const useNetworkInfo = () => {
         if (res.ok) {
           const data = await res.json();
           result.provider = safe(String(data.org ?? data.asn ?? '').replace(/^AS\d+\s*/, ''))
-            || 'ISP Detected';
+            || 'Unknown';
         }
       } catch {
-        result.provider = 'General Network';
+        result.provider = 'Unknown';
       }
+
+      if (result.provider === 'Detecting…') result.provider = 'Unknown';
+      if (result.ip === 'Detecting…') result.ip = 'Unknown';
 
       // — Connection API —
       const conn = navigator.connection ?? navigator.mozConnection ?? navigator.webkitConnection;
