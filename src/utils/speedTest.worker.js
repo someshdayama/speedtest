@@ -340,7 +340,8 @@ const measureDownload = async (onProgress, onPhaseProgress) => {
             }
           }
         } finally {
-          try { reader.cancel(); } catch { /* ignore */ }
+          // cancel() rejects once the stream was aborted; swallow it (no unhandled rejection).
+          reader.cancel().catch(() => {});
         }
 
         // Graduate to larger payload when this size completed under time budget
