@@ -14,7 +14,6 @@ import StatCard from './components/StatCard.jsx';
 import ScoreCard from './components/ScoreCard.jsx';
 import NetworkCard from './components/NetworkCard.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
-import ParticleBackground from './components/ParticleBackground.jsx';
 import SpeedometerCard from './components/SpeedometerCard.jsx';
 import ExpertReportModal from './components/ExpertReportModal.jsx';
 
@@ -41,9 +40,29 @@ const buildShareText = (metrics, score) => {
   ].join('\n');
 };
 
+const timeAgo = (date) => {
+  const mins = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
+  const hrs = Math.floor(mins / 60);
+  const days = Math.floor(hrs / 24);
+  if (days > 0) return `${days}d ago`;
+  if (hrs > 0) return `${hrs}h ago`;
+  if (mins > 0) return `${mins}m ago`;
+  return 'just now';
+};
+
+const LastRun = ({ last }) => (
+  <div className="last-result-bar" aria-label="Last test results">
+    <span className="lrb-label">Last run</span>
+    <span className="lrb-dl">↓ {last.download > 0 ? last.download.toFixed(1) : '--'}<span className="lrb-unit"> Mbps</span></span>
+    <span className="lrb-ul">↑ {last.upload > 0 ? last.upload.toFixed(1) : '--'}<span className="lrb-unit"> Mbps</span></span>
+    <span className="lrb-ping">◎ {last.ping || '--'}<span className="lrb-unit"> ms</span></span>
+    <span className="lrb-time">{timeAgo(last.date)}</span>
+  </div>
+);
+
 export default function App() {
   const {
-    status, metrics, displaySpeed, gaugeMax,
+    status, metrics, displaySpeed,
     dlData, ulData, history, isRunning, score,
     dlStability, ulStability, phaseProgress, errorMessage,
     setProvider, runTest, stopTest, clearHistory,
@@ -58,7 +77,6 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showExpertReport, setShowExpertReport] = useState(false);
   const [toast, setToast] = useState(null);
-  const [hasStarted, setHasStarted] = useState(false);
   const toastTimerRef = useRef(null);
 
   const openHistory = useCallback(() => setShowHistory(true), []);
@@ -100,32 +118,16 @@ export default function App() {
     }
   }, [metrics, score, showToast]);
 
-  const handleStartTest = useCallback(() => {
-    setHasStarted(true);
-    runTest();
-  }, [runTest]);
-
-  const brandMode = 'nav-mode';
   const latestReport = history[0] ?? null;
   const statusAnnouncement = PHASE_LABELS[status] ?? '';
 
   return (
     <>
       <a href="#main-content" className="skip-link">Skip to main content</a>
-      <div className="bg-grid-overlay" aria-hidden="true" />
-      <ParticleBackground status={status} />
 
       <div className="app-container">
-        <div
-          className={`unified-brand ${brandMode} ${!hasStarted ? 'is-initial' : ''}`}
-        >
-          <h1>Velocity</h1>
-        </div>
-
         <header className="header">
-          <div className="header-brand-placeholder" aria-hidden="true">
-            <span className="header-brand-spacer">Velocity</span>
-          </div>
+          <h1 className="brand">Velocity</h1>
 
           <nav className="header-actions" aria-label="App controls">
             <button
@@ -154,7 +156,6 @@ export default function App() {
               status={status}
               metrics={metrics}
               displaySpeed={displaySpeed}
-              gaugeMax={gaugeMax}
               dlData={dlData}
               ulData={ulData}
               isRunning={isRunning}
@@ -171,64 +172,68 @@ export default function App() {
               </div>
             )}
 
-            {(isIdle || isError) && (
-              <button
-                className="action-button"
-                onClick={handleStartTest}
-                aria-label="Start speed test"
-                type="button"
-              >
-                {isError ? 'Try Again' : 'Start Test'}
-              </button>
-            )}
+            {isIdle && history[0] && <LastRun last={history[0]} />}
 
-            {isRunning && (
-              <button
-                className="action-button is-stopping"
-                onClick={stopTest}
-                aria-label="Cancel speed test"
-                type="button"
-              >
-                Cancel Test
-              </button>
-            )}
-
-            {isFinished && (
-              <div className="finished-actions">
+            <div className="action-dock">
+              {(isIdle || isError) && (
                 <button
                   className="action-button"
                   onClick={runTest}
-                  aria-label="Run test again"
+                  aria-label="Start speed test"
                   type="button"
                 >
-                  Test Again
+                  {isError ? 'Try Again' : 'Start Test'}
                 </button>
-                <div className="finished-actions-secondary">
-                  {latestReport && (
-                    <button
-                      className="action-btn-ghost"
-                      onClick={() => setShowExpertReport(true)}
-                      aria-label="View expert report"
-                      title="Expert Report"
-                      type="button"
-                    >
-                      <FileText size={14} />
-                      Report
-                    </button>
-                  )}
+              )}
+
+              {isRunning && (
+                <button
+                  className="action-button is-stopping"
+                  onClick={stopTest}
+                  aria-label="Cancel speed test"
+                  type="button"
+                >
+                  Cancel Test
+                </button>
+              )}
+
+              {isFinished && (
+                <div className="finished-actions">
                   <button
-                    className="action-btn-ghost"
-                    onClick={handleShare}
-                    aria-label="Copy results to clipboard"
-                    title="Copy results to clipboard"
+                    className="action-button"
+                    onClick={runTest}
+                    aria-label="Run test again"
                     type="button"
                   >
-                    <Share2 size={14} />
-                    Share
+                    Test Again
                   </button>
+                  <div className="finished-actions-secondary">
+                    {latestReport && (
+                      <button
+                        className="action-btn-ghost"
+                        onClick={() => setShowExpertReport(true)}
+                        aria-label="View expert report"
+                        title="Expert Report"
+                        type="button"
+                      >
+                        <FileText size={14} />
+                        Report
+                      </button>
+                    )}
+                    <button
+                      className="action-btn-ghost"
+                      onClick={handleShare}
+                      aria-label="Copy results to clipboard"
+                      title="Copy results to clipboard"
+                      type="button"
+                    >
+                      <Share2 size={14} />
+                      Share
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </section>
 
           <section
@@ -339,39 +344,6 @@ export default function App() {
         </div>
       )}
 
-      {isIdle && history.length > 0 && (() => {
-        const last = history[0];
-        const timeAgo = (() => {
-          const diff = Date.now() - new Date(last.date).getTime();
-          const mins = Math.floor(diff / 60000);
-          const hrs = Math.floor(mins / 60);
-          const days = Math.floor(hrs / 24);
-          if (days > 0) return `${days}d ago`;
-          if (hrs > 0) return `${hrs}h ago`;
-          if (mins > 0) return `${mins}m ago`;
-          return 'just now';
-        })();
-        return (
-          <div className="last-result-bar lrb-fade-in" role="complementary" aria-label="Last test results">
-            <span className="lrb-label">Last<span className="lrb-text-extra"> run</span></span>
-            <span className="lrb-sep">·</span>
-            <span className="lrb-item lrb-dl">
-              ↓ {last.download > 0 ? last.download.toFixed(1) : '--'}
-              <span className="lrb-unit"> Mbps</span>
-            </span>
-            <span className="lrb-item lrb-ul">
-              ↑ {last.upload > 0 ? last.upload.toFixed(1) : '--'}
-              <span className="lrb-unit"> Mbps</span>
-            </span>
-            <span className="lrb-item lrb-ping">
-              ◎ {last.ping || '--'}
-              <span className="lrb-unit"> ms</span>
-            </span>
-            <span className="lrb-sep">·</span>
-            <span className="lrb-time">{timeAgo}</span>
-          </div>
-        );
-      })()}
     </>
   );
 }
