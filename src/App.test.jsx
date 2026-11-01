@@ -34,8 +34,10 @@ describe('Velocity App Component', () => {
     it('renders correctly on mount', () => {
         render(<App />);
 
-        expect(screen.getAllByText(/Velocity/i)[0]).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /Velocity/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Start speed test/i })).toBeInTheDocument();
+        // No history yet → no sheet handle.
+        expect(screen.queryByRole('button', { name: /Open history/i })).not.toBeInTheDocument();
     });
 
     it('executes the full speed test sequence completely rendering the values safely', async () => {
@@ -61,11 +63,19 @@ describe('Velocity App Component', () => {
         fireEvent.click(startButton);
 
         await waitFor(() => {
-            expect(screen.getByRole('article', { name: /Download/i })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /Run test again/i })).toBeInTheDocument();
         }, { timeout: 4000 });
 
-        expect(screen.getByRole('button', { name: /Run test again/i })).toBeInTheDocument();
+        // Plain-English verdict for 200 down / 50 up / 25 ms.
+        expect(screen.getAllByText(/Great for 4K streaming/i)[0]).toBeInTheDocument();
+
+        // Nerd panel shows only real values; provider comes from network info.
+        fireEvent.click(screen.getByRole('button', { name: /Nerd stats/i }));
         expect(screen.getByText('Mock Provider')).toBeInTheDocument();
+        expect(screen.getByText(/browsers can't measure it/i)).toBeInTheDocument();
+
+        // The finished run lands in the history sheet.
+        expect(screen.getByRole('button', { name: /Open history, 1 past run/i })).toBeInTheDocument();
     });
 
     it('handles testing errors gracefully without crashing the React UI payload', async () => {
